@@ -258,6 +258,63 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
         allowFrom,
         mode,
       }),
+    sendPayload: async ({ cfg, to, payload, accountId }) => {
+      const payloadText = typeof payload?.text === "string" ? payload.text : "";
+      const mediaListRaw = payload?.mediaUrls?.length
+        ? payload.mediaUrls
+        : payload?.mediaUrl
+          ? [payload.mediaUrl]
+          : [];
+      const mediaList = mediaListRaw
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter((entry): entry is string => Boolean(entry));
+      if (!payloadText && mediaList.length === 0) {
+        return { ok: true, channel: CHANNEL_ID };
+      }
+
+      if (mediaList.length > 0) {
+        const sendMedia = wapPlugin.outbound?.sendMedia;
+        if (!sendMedia) {
+          return {
+            ok: false,
+            error: "WAP sendMedia is unavailable",
+            channel: CHANNEL_ID,
+          };
+        }
+        let lastResult = await sendMedia({
+          cfg,
+          to,
+          text: payloadText,
+          mediaUrl: mediaList[0],
+          accountId,
+        });
+        for (let i = 1; i < mediaList.length; i += 1) {
+          lastResult = await sendMedia({
+            cfg,
+            to,
+            text: "",
+            mediaUrl: mediaList[i],
+            accountId,
+          });
+        }
+        return lastResult;
+      }
+
+      const sendText = wapPlugin.outbound?.sendText;
+      if (!sendText) {
+        return {
+          ok: false,
+          error: "WAP sendText is unavailable",
+          channel: CHANNEL_ID,
+        };
+      }
+      return sendText({
+        cfg,
+        to,
+        text: payloadText,
+        accountId,
+      });
+    },
     sendText: async ({ to, text, accountId }) => {
       const runtime = getWapRuntime();
       const effectiveAccountId = accountId ?? DEFAULT_ACCOUNT_ID;

@@ -95,6 +95,23 @@ declare module "openclaw/plugin-sdk" {
         accountId?: string | null;
         mode?: "explicit" | "implicit" | "heartbeat";
       }) => { ok: true; to: string } | { ok: false; error: Error };
+      sendPayload?: (ctx: {
+        cfg: OpenClawConfig;
+        to: string;
+        text: string;
+        mediaUrl?: string;
+        mediaLocalRoots?: readonly string[];
+        replyToId?: string | null;
+        threadId?: string | number | null;
+        accountId?: string | null;
+        payload: {
+          text?: string;
+          mediaUrl?: string;
+          mediaUrls?: string[];
+          channelData?: Record<string, unknown>;
+          replyToId?: string | null;
+        };
+      }) => Promise<OutboundDeliveryResult>;
       sendText?: (ctx: {
         cfg: OpenClawConfig;
         to: string;
