@@ -841,18 +841,12 @@ async function processWapInboundMessage(params: {
     rawBody: bodyText,
     isGroup,
     dmPolicy,
-    configuredAllowFrom,
+    configuredAllowFrom: allowFrom,
+    configuredGroupAllowFrom: groupAllowFrom,
     senderId: senderIdForPolicy,
     isSenderAllowed: (senderId, effectiveAllowFrom) =>
       isSenderAllowed(senderId, effectiveAllowFrom, isGroup ? true : dmPolicy === "open"),
-    readAllowFromStore: async () =>
-      isGroup
-        ? []
-        : await readAllowFromStoreCompat({
-            pairing: core.channel.pairing,
-            channel: CHANNEL_ID,
-            accountId: client.accountId,
-          }),
+    readAllowFromStore: async () => storeAllowFrom,
     shouldComputeCommandAuthorized: (rawBody, config) =>
       core.channel.commands.shouldComputeCommandAuthorized(rawBody, config),
     resolveCommandAuthorizedFromAuthorizers: (authParams) =>

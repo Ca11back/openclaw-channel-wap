@@ -6,9 +6,40 @@ declare module "openclaw/plugin-sdk" {
     [key: string]: unknown;
   };
 
+  export type PluginLogger = {
+    debug: (msg: string, meta?: Record<string, unknown>) => void;
+    info: (msg: string, meta?: Record<string, unknown>) => void;
+    warn: (msg: string, meta?: Record<string, unknown>) => void;
+    error: (msg: string, meta?: Record<string, unknown>) => void;
+  };
+
+  export type OpenClawPluginConfigSchema = {
+    safeParse?: (value: unknown) => {
+      success: boolean;
+      data?: unknown;
+      error?: {
+        issues?: Array<{ path: Array<string | number>; message: string }>;
+      };
+    };
+    parse?: (value: unknown) => unknown;
+    validate?: (value: unknown) => { ok: true; value?: unknown } | { ok: false; errors: string[] };
+    uiHints?: Record<string, unknown>;
+    jsonSchema?: Record<string, unknown>;
+  };
+
+  export type ChannelConfigUiHint = {
+    label?: string;
+    help?: string;
+    tags?: string[];
+    advanced?: boolean;
+    sensitive?: boolean;
+    placeholder?: string;
+    itemTemplate?: unknown;
+  };
+
   export type ChannelConfigSchema = {
     schema: Record<string, unknown>;
-    uiHints?: Record<string, unknown>;
+    uiHints?: Record<string, ChannelConfigUiHint>;
   };
 
   export type OutboundDeliveryResult = {
@@ -18,52 +49,203 @@ declare module "openclaw/plugin-sdk" {
     [key: string]: unknown;
   };
 
+  export type ChannelAccountSnapshot = Record<string, unknown>;
+
+  export type ChannelMeta = {
+    id: string;
+    label: string;
+    selectionLabel: string;
+    docsPath: string;
+    docsLabel?: string;
+    blurb: string;
+    order?: number;
+    aliases?: string[];
+    selectionDocsPrefix?: string;
+    selectionDocsOmitLabel?: boolean;
+    selectionExtras?: string[];
+    detailLabel?: string;
+    systemImage?: string;
+    showConfigured?: boolean;
+    quickstartAllowFrom?: boolean;
+    forceAccountBinding?: boolean;
+    preferSessionLookupForAnnounceTarget?: boolean;
+    preferOver?: string[];
+  };
+
+  export type ChannelCapabilities = {
+    chatTypes: Array<"direct" | "group" | "channel" | "thread">;
+    polls?: boolean;
+    reactions?: boolean;
+    edit?: boolean;
+    unsend?: boolean;
+    reply?: boolean;
+    effects?: boolean;
+    groupManagement?: boolean;
+    threads?: boolean;
+    media?: boolean;
+    nativeCommands?: boolean;
+    blockStreaming?: boolean;
+  };
+
+  export type ChannelLogSink = {
+    info: (msg: string) => void;
+    warn: (msg: string) => void;
+    error: (msg: string) => void;
+    debug?: (msg: string) => void;
+  };
+
+  export type ChannelGroupContext = {
+    cfg: OpenClawConfig;
+    groupId?: string | null;
+    groupChannel?: string | null;
+    groupSpace?: string | null;
+    accountId?: string | null;
+    senderId?: string | null;
+    senderName?: string | null;
+    senderUsername?: string | null;
+    senderE164?: string | null;
+  };
+
+  export type ChannelSecurityDmPolicy = {
+    policy: string;
+    allowFrom?: Array<string | number> | null;
+    policyPath?: string;
+    allowFromPath: string;
+    approveHint: string;
+    normalizeEntry?: (raw: string) => string;
+  };
+
+  export type ChannelSecurityContext<ResolvedAccount = unknown> = {
+    cfg: OpenClawConfig;
+    accountId?: string | null;
+    account: ResolvedAccount;
+  };
+
+  export type ChannelOutboundContext = {
+    cfg: OpenClawConfig;
+    to: string;
+    text: string;
+    mediaUrl?: string;
+    mediaLocalRoots?: readonly string[];
+    gifPlayback?: boolean;
+    replyToId?: string | null;
+    threadId?: string | number | null;
+    accountId?: string | null;
+    identity?: unknown;
+    deps?: unknown;
+    silent?: boolean;
+  };
+
+  export type ChannelOutboundPayloadContext = ChannelOutboundContext & {
+    payload: {
+      text?: string;
+      mediaUrl?: string;
+      mediaUrls?: string[];
+      channelData?: Record<string, unknown>;
+      replyToId?: string | null;
+    };
+  };
+
+  export type ChannelGatewayContext<ResolvedAccount = unknown> = {
+    cfg: OpenClawConfig;
+    accountId: string;
+    account: ResolvedAccount;
+    runtime: unknown;
+    abortSignal: AbortSignal;
+    log?: ChannelLogSink;
+    getStatus: () => ChannelAccountSnapshot;
+    setStatus: (next: ChannelAccountSnapshot) => void;
+    channelRuntime?: PluginRuntime["channel"];
+  };
+
+  export type ChannelLoginWithQrStartResult = {
+    qrDataUrl?: string;
+    message: string;
+  };
+
+  export type ChannelLoginWithQrWaitResult = {
+    connected: boolean;
+    message: string;
+  };
+
+  export type ChannelLogoutResult = {
+    cleared: boolean;
+    loggedOut?: boolean;
+    [key: string]: unknown;
+  };
+
   export interface ChannelPlugin<ResolvedAccount = unknown, Probe = unknown, Audit = unknown> {
     id: string;
-    meta: Record<string, unknown>;
+    meta: ChannelMeta;
+    defaults?: {
+      queue?: {
+        debounceMs?: number;
+      };
+    };
     pairing?: {
       idLabel: string;
       normalizeAllowEntry?: (entry: string) => string;
+      notifyApproval?: (params: {
+        cfg: OpenClawConfig;
+        id: string;
+        runtime?: unknown;
+      }) => Promise<void>;
     };
-    capabilities: Record<string, unknown>;
+    capabilities: ChannelCapabilities;
     reload?: { configPrefixes: string[]; noopPrefixes?: string[] };
     configSchema?: ChannelConfigSchema;
+    onboarding?: unknown;
+    setup?: unknown;
     config: {
       listAccountIds: (cfg: OpenClawConfig) => string[];
       resolveAccount: (cfg: OpenClawConfig, accountId?: string | null) => ResolvedAccount;
+      inspectAccount?: (cfg: OpenClawConfig, accountId?: string | null) => unknown;
       defaultAccountId?: (cfg: OpenClawConfig) => string;
+      setAccountEnabled?: (params: {
+        cfg: OpenClawConfig;
+        accountId: string;
+        enabled: boolean;
+      }) => OpenClawConfig;
+      deleteAccount?: (params: { cfg: OpenClawConfig; accountId: string }) => OpenClawConfig;
+      isEnabled?: (account: ResolvedAccount, cfg: OpenClawConfig) => boolean;
+      disabledReason?: (account: ResolvedAccount, cfg: OpenClawConfig) => string;
       isConfigured?: (
         account: ResolvedAccount,
         cfg: OpenClawConfig,
       ) => boolean | Promise<boolean>;
+      unconfiguredReason?: (account: ResolvedAccount, cfg: OpenClawConfig) => string;
       describeAccount?: (
         account: ResolvedAccount,
         cfg: OpenClawConfig,
-      ) => Record<string, unknown>;
+      ) => ChannelAccountSnapshot;
       resolveAllowFrom?: (params: {
         cfg: OpenClawConfig;
         accountId?: string | null;
-      }) => string[] | undefined;
+      }) => Array<string | number> | undefined;
       formatAllowFrom?: (params: {
         cfg: OpenClawConfig;
         accountId?: string | null;
         allowFrom: Array<string | number>;
       }) => string[];
+      resolveDefaultTo?: (params: {
+        cfg: OpenClawConfig;
+        accountId?: string | null;
+      }) => string | undefined;
     };
     security?: {
-      resolveDmPolicy?: (params: {
-        cfg: OpenClawConfig;
-        accountId?: string | null;
-        account: ResolvedAccount;
-      }) => Record<string, unknown>;
+      resolveDmPolicy?: (
+        params: ChannelSecurityContext<ResolvedAccount>,
+      ) => ChannelSecurityDmPolicy | null;
+      collectWarnings?: (
+        params: ChannelSecurityContext<ResolvedAccount>,
+      ) => Promise<string[]> | string[];
     };
     groups?: {
-      resolveRequireMention?: (params: {
-        cfg: OpenClawConfig;
-        accountId?: string | null;
-        groupId?: string | null;
-      }) => boolean | undefined;
+      resolveRequireMention?: (params: ChannelGroupContext) => boolean | undefined;
+      resolveGroupIntroHint?: (params: ChannelGroupContext) => string | undefined;
+      resolveToolPolicy?: (params: ChannelGroupContext) => unknown;
     };
+    mentions?: unknown;
     messaging?: {
       normalizeTarget?: (target: string) => string;
       targetResolver?: {
@@ -87,7 +269,10 @@ declare module "openclaw/plugin-sdk" {
     };
     outbound?: {
       deliveryMode: "direct" | "gateway" | "hybrid";
+      chunker?: ((text: string, limit: number) => string[]) | null;
+      chunkerMode?: "text" | "markdown";
       textChunkLimit?: number;
+      pollMaxOptions?: number;
       resolveTarget?: (ctx: {
         cfg?: OpenClawConfig;
         to?: string;
@@ -95,197 +280,248 @@ declare module "openclaw/plugin-sdk" {
         accountId?: string | null;
         mode?: "explicit" | "implicit" | "heartbeat";
       }) => { ok: true; to: string } | { ok: false; error: Error };
-      sendPayload?: (ctx: {
-        cfg: OpenClawConfig;
-        to: string;
-        text: string;
-        mediaUrl?: string;
-        mediaLocalRoots?: readonly string[];
-        replyToId?: string | null;
-        threadId?: string | number | null;
-        accountId?: string | null;
-        payload: {
-          text?: string;
-          mediaUrl?: string;
-          mediaUrls?: string[];
-          channelData?: Record<string, unknown>;
-          replyToId?: string | null;
-        };
-      }) => Promise<OutboundDeliveryResult>;
-      sendText?: (ctx: {
-        cfg: OpenClawConfig;
-        to: string;
-        text: string;
-        accountId?: string | null;
-      }) => Promise<OutboundDeliveryResult>;
-      sendMedia?: (ctx: {
-        cfg: OpenClawConfig;
-        to: string;
-        text: string;
-        mediaUrl?: string;
-        accountId?: string | null;
-      }) => Promise<OutboundDeliveryResult>;
+      sendPayload?: (ctx: ChannelOutboundPayloadContext) => Promise<OutboundDeliveryResult>;
+      sendText?: (ctx: ChannelOutboundContext) => Promise<OutboundDeliveryResult>;
+      sendMedia?: (ctx: ChannelOutboundContext) => Promise<OutboundDeliveryResult>;
+      sendPoll?: (ctx: unknown) => Promise<unknown>;
     };
     status?: {
-      defaultRuntime?: Record<string, unknown>;
+      defaultRuntime?: ChannelAccountSnapshot;
       buildAccountSnapshot?: (params: {
         account: ResolvedAccount;
         cfg: OpenClawConfig;
-        runtime?: Record<string, unknown>;
+        runtime?: ChannelAccountSnapshot;
         probe?: Probe;
         audit?: Audit;
-      }) => Record<string, unknown> | Promise<Record<string, unknown>>;
+      }) => ChannelAccountSnapshot | Promise<ChannelAccountSnapshot>;
       buildChannelSummary?: (params: {
         account: ResolvedAccount;
         cfg: OpenClawConfig;
         defaultAccountId: string;
-        snapshot: Record<string, unknown>;
+        snapshot: ChannelAccountSnapshot;
       }) => Record<string, unknown> | Promise<Record<string, unknown>>;
+      probeAccount?: (params: {
+        account: ResolvedAccount;
+        timeoutMs: number;
+        cfg: OpenClawConfig;
+      }) => Promise<Probe>;
+      auditAccount?: (params: {
+        account: ResolvedAccount;
+        timeoutMs: number;
+        cfg: OpenClawConfig;
+        probe?: Probe;
+      }) => Promise<Audit>;
     };
+    gatewayMethods?: string[];
     gateway?: {
-      startAccount?: (ctx: {
+      startAccount?: (
+        ctx: ChannelGatewayContext<ResolvedAccount>,
+      ) => Promise<void | { stop?: () => void | Promise<void> }>;
+      stopAccount?: (ctx: ChannelGatewayContext<ResolvedAccount>) => Promise<void>;
+      loginWithQrStart?: (params: {
+        accountId?: string;
+        force?: boolean;
+        timeoutMs?: number;
+        verbose?: boolean;
+      }) => Promise<ChannelLoginWithQrStartResult>;
+      loginWithQrWait?: (params: {
+        accountId?: string;
+        timeoutMs?: number;
+      }) => Promise<ChannelLoginWithQrWaitResult>;
+      logoutAccount?: (ctx: {
         cfg: OpenClawConfig;
         accountId: string;
         account: ResolvedAccount;
         runtime: unknown;
-        abortSignal: AbortSignal;
-        log?: {
-          debug?: (msg: string) => void;
-          info?: (msg: string) => void;
-          warn?: (msg: string) => void;
-          error?: (msg: string) => void;
-        };
-        getStatus: () => Record<string, unknown>;
-        setStatus: (next: Record<string, unknown>) => void;
-      }) => Promise<void | { stop?: () => void | Promise<void> }>;
-      stopAccount?: (ctx: {
+        log?: ChannelLogSink;
+      }) => Promise<ChannelLogoutResult>;
+    };
+    auth?: unknown;
+    elevated?: unknown;
+    commands?: unknown;
+    streaming?: unknown;
+    threading?: unknown;
+    agentPrompt?: unknown;
+    directory?: unknown;
+    resolver?: unknown;
+    heartbeat?: unknown;
+    agentTools?: unknown;
+  }
+
+  export interface PluginRuntimeChannel {
+    text: {
+      hasControlCommand: (text: string, cfg: OpenClawConfig) => boolean;
+      resolveTextChunkLimit: (
+        cfg: OpenClawConfig,
+        channel: string,
+        accountId?: string | null,
+        opts?: { fallbackLimit?: number },
+      ) => number;
+      resolveChunkMode: (
+        cfg: OpenClawConfig,
+        channel: string,
+        accountId?: string | null,
+      ) => string;
+      chunkMarkdownTextWithMode: (text: string, limit: number, mode: string) => string[];
+      chunkByNewline?: (...args: unknown[]) => unknown;
+      chunkMarkdownText?: (...args: unknown[]) => unknown;
+      chunkText?: (...args: unknown[]) => unknown;
+      chunkTextWithMode?: (...args: unknown[]) => unknown;
+      resolveMarkdownTableMode?: (...args: unknown[]) => unknown;
+      convertMarkdownTables?: (...args: unknown[]) => unknown;
+    };
+    routing: {
+      buildAgentSessionKey?: (...args: unknown[]) => unknown;
+      resolveAgentRoute: (params: {
         cfg: OpenClawConfig;
+        channel: string;
         accountId: string;
-        account: ResolvedAccount;
-        runtime: unknown;
-        abortSignal: AbortSignal;
-        log?: {
-          debug?: (msg: string) => void;
-          info?: (msg: string) => void;
-          warn?: (msg: string) => void;
-          error?: (msg: string) => void;
-        };
-        getStatus: () => Record<string, unknown>;
-        setStatus: (next: Record<string, unknown>) => void;
-      }) => Promise<void>;
+        peer: { kind: "dm" | "group" | "channel"; id: string };
+      }) => { sessionKey: string; accountId: string; agentId: string };
+    };
+    pairing: {
+      readAllowFromStore: {
+        (params: {
+          channel: string;
+          accountId: string;
+          env?: NodeJS.ProcessEnv;
+        }): Promise<string[]>;
+        (
+          channel: string,
+          env?: NodeJS.ProcessEnv,
+          accountId?: string | null,
+        ): Promise<string[]>;
+        (channel: string, accountId?: string | null): Promise<string[]>;
+      };
+      upsertPairingRequest: (params: {
+        channel: string;
+        id: string;
+        accountId?: string | null;
+        meta?: Record<string, unknown>;
+      }) => Promise<{ code: string; created: boolean }>;
+      buildPairingReply: (params: {
+        channel: string;
+        idLine: string;
+        code: string;
+      }) => string;
+    };
+    reply: {
+      dispatchReplyWithBufferedBlockDispatcher?: (...args: unknown[]) => Promise<unknown>;
+      formatInboundEnvelope: (params: {
+        channel: string;
+        from: string;
+        timestamp?: number;
+        body: string;
+        chatType: "direct" | "group" | "channel";
+        sender?: { name: string; id: string };
+      }) => string;
+      finalizeInboundContext: (ctx: Record<string, unknown>) => Record<string, unknown>;
+      resolveHumanDelayConfig: (cfg: OpenClawConfig, agentId?: string) => unknown;
+      createReplyDispatcherWithTyping: (params: {
+        humanDelay?: unknown;
+        deliver: (payload: {
+          text?: string;
+          mediaUrl?: string;
+          mediaUrls?: string[];
+        }) => Promise<void>;
+        onError?: (err: unknown, info: { kind: string }) => void;
+      }) => {
+        dispatcher: unknown;
+        replyOptions: unknown;
+        markDispatchIdle: () => void;
+      };
+      dispatchReplyFromConfig: (params: {
+        ctx: Record<string, unknown>;
+        cfg: OpenClawConfig;
+        dispatcher: unknown;
+        replyOptions?: unknown;
+      }) => Promise<unknown>;
+      resolveEffectiveMessagesConfig?: (...args: unknown[]) => unknown;
+      withReplyDispatcher?: (...args: unknown[]) => unknown;
+      formatAgentEnvelope?: (...args: unknown[]) => string;
+      resolveEnvelopeFormatOptions?: (...args: unknown[]) => unknown;
+    };
+    media?: {
+      fetchRemoteMedia?: (...args: unknown[]) => Promise<unknown>;
+      saveMediaBuffer?: (...args: unknown[]) => Promise<unknown>;
+    };
+    activity: {
+      record: (params: {
+        channel: string;
+        accountId: string;
+        direction: "inbound" | "outbound";
+      }) => void;
+      get?: (...args: unknown[]) => unknown;
+    };
+    session?: Record<string, unknown>;
+    mentions?: Record<string, unknown>;
+    reactions?: Record<string, unknown>;
+    groups?: Record<string, unknown>;
+    debounce?: Record<string, unknown>;
+    commands: {
+      resolveCommandAuthorizedFromAuthorizers: (params: {
+        useAccessGroups: boolean;
+        authorizers: Array<{ configured: boolean; allowed: boolean }>;
+      }) => boolean;
+      isControlCommandMessage?: (...args: unknown[]) => boolean;
+      shouldComputeCommandAuthorized: (rawBody: string, cfg: OpenClawConfig) => boolean;
+      shouldHandleTextCommands?: (...args: unknown[]) => boolean;
     };
   }
 
   export interface PluginRuntime {
-    channel: {
-      pairing: {
-        readAllowFromStore: (
-          channel: string,
-          env?: NodeJS.ProcessEnv,
-          accountId?: string | null,
-        ) => Promise<string[]>;
-        upsertPairingRequest: (params: {
-          channel: string;
-          id: string;
-          accountId?: string | null;
-          meta?: Record<string, unknown>;
-        }) => Promise<{ code: string; created: boolean }>;
-        buildPairingReply: (params: {
-          channel: string;
-          idLine: string;
-          code: string;
-        }) => string;
-      };
-      commands: {
-        shouldComputeCommandAuthorized: (rawBody: string, cfg: OpenClawConfig) => boolean;
-        resolveCommandAuthorizedFromAuthorizers: (params: {
-          useAccessGroups: boolean;
-          authorizers: Array<{ configured: boolean; allowed: boolean }>;
-        }) => boolean;
-      };
-      text: {
-        hasControlCommand: (text: string, cfg: OpenClawConfig) => boolean;
-        resolveTextChunkLimit: (
-          cfg: OpenClawConfig,
-          channel: string,
-          accountId?: string | null,
-          opts?: { fallbackLimit?: number },
-        ) => number;
-        resolveChunkMode: (
-          cfg: OpenClawConfig,
-          channel: string,
-          accountId?: string | null,
-        ) => string;
-        chunkMarkdownTextWithMode: (text: string, limit: number, mode: string) => string[];
-      };
-      routing: {
-        resolveAgentRoute: (params: {
-          cfg: OpenClawConfig;
-          channel: string;
-          accountId: string;
-          peer: { kind: "dm" | "group" | "channel"; id: string };
-        }) => { sessionKey: string; accountId: string; agentId: string };
-      };
-      activity: {
-        record: (params: {
-          channel: string;
-          accountId: string;
-          direction: "inbound" | "outbound";
-        }) => void;
-      };
-      reply: {
-        formatInboundEnvelope: (params: {
-          channel: string;
-          from: string;
-          timestamp?: number;
-          body: string;
-          chatType: "direct" | "group" | "channel";
-          sender?: { name: string; id: string };
-        }) => string;
-        finalizeInboundContext: (ctx: Record<string, unknown>) => Record<string, unknown>;
-        resolveHumanDelayConfig: (cfg: OpenClawConfig, agentId?: string) => unknown;
-        createReplyDispatcherWithTyping: (params: {
-          humanDelay?: unknown;
-          deliver: (payload: {
-            text?: string;
-            mediaUrl?: string;
-            mediaUrls?: string[];
-          }) => Promise<void>;
-          onError?: (err: unknown, info: { kind: string }) => void;
-        }) => {
-          dispatcher: unknown;
-          replyOptions: unknown;
-          markDispatchIdle: () => void;
-        };
-        dispatchReplyFromConfig: (params: {
-          ctx: Record<string, unknown>;
-          cfg: OpenClawConfig;
-          dispatcher: unknown;
-          replyOptions?: unknown;
-        }) => Promise<unknown>;
-      };
-    };
+    version?: string;
+    config?: Record<string, unknown>;
+    system?: Record<string, unknown>;
+    media?: Record<string, unknown>;
+    tts?: Record<string, unknown>;
+    stt?: Record<string, unknown>;
+    tools?: Record<string, unknown>;
+    events?: Record<string, unknown>;
+    logging?: Record<string, unknown>;
+    state?: Record<string, unknown>;
+    subagent?: Record<string, unknown>;
+    channel: PluginRuntimeChannel;
   }
 
   export interface OpenClawPluginApi {
     id: string;
+    name: string;
+    version?: string;
+    description?: string;
+    source: string;
     config: OpenClawConfig;
+    pluginConfig?: Record<string, unknown>;
     runtime: PluginRuntime;
-    logger: {
-      debug: (msg: string) => void;
-      info: (msg: string) => void;
-      warn: (msg: string) => void;
-      error: (msg: string) => void;
-    };
-    registerChannel: (registration: { plugin: ChannelPlugin<any, any, any> }) => void;
+    logger: PluginLogger;
+    registerTool: (tool: unknown, opts?: { name?: string; names?: string[]; optional?: boolean }) => void;
+    registerHook: (events: string | string[], handler: unknown, opts?: unknown) => void;
+    registerHttpRoute: (params: unknown) => void;
+    registerChannel: (
+      registration: { plugin: ChannelPlugin<any, any, any>; dock?: unknown } | ChannelPlugin<any, any, any>,
+    ) => void;
+    registerGatewayMethod: (method: string, handler: unknown) => void;
+    registerCli: (registrar: unknown, opts?: { commands?: string[] }) => void;
     registerService: (service: {
       id: string;
-      start: () => void | Promise<void>;
-      stop: () => void | Promise<void>;
+      start: (ctx: { config: OpenClawConfig; workspaceDir?: string; stateDir: string; logger: PluginLogger }) => void | Promise<void>;
+      stop?: (ctx: { config: OpenClawConfig; workspaceDir?: string; stateDir: string; logger: PluginLogger }) => void | Promise<void>;
     }) => void;
+    registerProvider: (provider: unknown) => void;
+    registerCommand: (command: unknown) => void;
+    registerContextEngine: (id: string, factory: unknown) => void;
+    resolvePath: (input: string) => string;
+    on: (hookName: string, handler: unknown, opts?: { priority?: number }) => void;
   }
 
-  export function emptyPluginConfigSchema(): Record<string, unknown>;
+  export function emptyPluginConfigSchema(): OpenClawPluginConfigSchema;
+
+  export function createPluginRuntimeStore<T>(initialState?: T): unknown;
+  export function createScopedChannelConfigBase<T extends Record<string, unknown>>(
+    params: unknown,
+  ): unknown;
+  export const AllowFromEntrySchema: unknown;
+  export function buildCatchallMultiAccountChannelSchema<T>(accountSchema: T): T;
 
   export function resolveSenderCommandAuthorization(params: {
     cfg: OpenClawConfig;
@@ -293,6 +529,7 @@ declare module "openclaw/plugin-sdk" {
     isGroup: boolean;
     dmPolicy: string;
     configuredAllowFrom: string[];
+    configuredGroupAllowFrom?: string[];
     senderId: string;
     isSenderAllowed: (senderId: string, allowFrom: string[]) => boolean;
     readAllowFromStore: () => Promise<string[]>;
@@ -304,6 +541,32 @@ declare module "openclaw/plugin-sdk" {
   }): Promise<{
     shouldComputeAuth: boolean;
     effectiveAllowFrom: string[];
+    effectiveGroupAllowFrom: string[];
+    senderAllowedForCommands: boolean;
+    commandAuthorized: boolean | undefined;
+  }>;
+
+  export function resolveSenderCommandAuthorizationWithRuntime(params: {
+    cfg: OpenClawConfig;
+    rawBody: string;
+    isGroup: boolean;
+    dmPolicy: string;
+    configuredAllowFrom: string[];
+    configuredGroupAllowFrom?: string[];
+    senderId: string;
+    isSenderAllowed: (senderId: string, allowFrom: string[]) => boolean;
+    readAllowFromStore: () => Promise<string[]>;
+    runtime: {
+      shouldComputeCommandAuthorized: (rawBody: string, cfg: OpenClawConfig) => boolean;
+      resolveCommandAuthorizedFromAuthorizers: (params: {
+        useAccessGroups: boolean;
+        authorizers: Array<{ configured: boolean; allowed: boolean }>;
+      }) => boolean;
+    };
+  }): Promise<{
+    shouldComputeAuth: boolean;
+    effectiveAllowFrom: string[];
+    effectiveGroupAllowFrom: string[];
     senderAllowedForCommands: boolean;
     commandAuthorized: boolean | undefined;
   }>;

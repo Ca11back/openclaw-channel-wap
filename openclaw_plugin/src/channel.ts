@@ -39,6 +39,10 @@ function resolvePolicyPath(cfg: OpenClawConfig, account: WapAccount): string {
   return `channels.${CHANNEL_ID}.`;
 }
 
+function buildPairingApproveHint(): string {
+  return `Approve via: openclaw pairing list ${CHANNEL_ID} / openclaw pairing approve ${CHANNEL_ID} <code>`;
+}
+
 function pickString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -147,6 +151,8 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
         allowFrom: resolveAllowFrom(account.config),
         policyPath: `${basePath}dmPolicy`,
         allowFromPath: `${basePath}allowFrom`,
+        approveHint: buildPairingApproveHint(),
+        normalizeEntry: normalizeWapMessagingTarget,
       };
     },
   },
