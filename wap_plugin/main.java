@@ -40,6 +40,7 @@ Set ALLOW_FROM = Collections.synchronizedSet(new HashSet());
 Set GROUP_ALLOW_CHATS = Collections.synchronizedSet(new HashSet());
 Set GROUP_ALLOW_FROM = Collections.synchronizedSet(new HashSet());
 Set NO_MENTION_CONTEXT_GROUPS = Collections.synchronizedSet(new HashSet());
+java.util.Map GROUP_CONFIGS = Collections.synchronizedMap(new java.util.HashMap());
 boolean configReceived = false;  // 是否已收到服务端配置
 String groupPolicy = "open";  // 群策略: open/allowlist/disabled
 boolean requireMentionInGroup = true;  // 群聊是否必须 @ 才触发
@@ -299,7 +300,9 @@ void connectToServer() {
             GROUP_ALLOW_CHATS.clear();
             GROUP_ALLOW_FROM.clear();
             NO_MENTION_CONTEXT_GROUPS.clear();
+            GROUP_CONFIGS.clear();
             groupPolicy = "open";
+            requireMentionInGroup = true;
             startHeartbeat();
             startRetrySender();
         }
@@ -547,12 +550,19 @@ void onHandleMsg(Object msgInfoBean) {
         if (!isGroupChatAllowedByPolicy(talker)) {
             return;
         }
-        // 群聊可选：仅 @ 我时触发；部分群可配置为未@也上报用于上下文
-        if (requireMentionInGroup && !isMentionedMe && !isNoMentionContextGroupEnabled(talker)) {
+        if (!isGroupEnabledByConfig(talker)) {
             return;
         }
-        // 群成员 allowlist（可选）
-        if (GROUP_ALLOW_FROM.size() > 0 && !GROUP_ALLOW_FROM.contains(normalizeId(sender))) {
+        String groupSenderPolicy = resolveGroupSenderPolicy(talker);
+        if ("disabled".equals(groupSenderPolicy)) {
+            return;
+        }
+        Set effectiveGroupAllowFrom = resolveEffectiveGroupAllowFrom(talker);
+        if ("allowlist".equals(groupSenderPolicy) && effectiveGroupAllowFrom.size() > 0 && !effectiveGroupAllowFrom.contains(normalizeId(sender))) {
+            return;
+        }
+        // 群聊可选：仅 @ 我时触发；部分群可配置为未@也上报用于上下文
+        if (isGroupMentionRequired(talker) && !isMentionedMe && !isNoMentionContextGroupEnabled(talker)) {
             return;
         }
     } else {
@@ -1313,6 +1323,120 @@ boolean isNoMentionContextGroupEnabled(String talker) {
     return NO_MENTION_CONTEXT_GROUPS.contains("*") || NO_MENTION_CONTEXT_GROUPS.contains(normalizedTalker);
 }
 
+java.util.HashMap getExactGroupConfig(String talker) {
+    String normalizedTalker = normalizeId(talker);
+    if (normalizedTalker.isEmpty()) {
+        return null;
+    }
+    Object raw = GROUP_CONFIGS.get(normalizedTalker);
+    if (raw instanceof java.util.HashMap) {
+        return (java.util.HashMap) raw;
+    }
+    return null;
+}
+
+java.util.HashMap getDefaultGroupConfig() {
+    Object raw = GROUP_CONFIGS.get("*");
+    if (raw instanceof java.util.HashMap) {
+        return (java.util.HashMap) raw;
+    }
+    return null;
+}
+
+Object getMergedGroupConfigValue(String talker, String key) {
+    java.util.HashMap exact = getExactGroupConfig(talker);
+    if (exact != null && exact.containsKey(key)) {
+        return exact.get(key);
+    }
+    java.util.HashMap defaults = getDefaultGroupConfig();
+    if (defaults != null && defaults.containsKey(key)) {
+        return defaults.get(key);
+    }
+    return null;
+}
+
+boolean isGroupEnabledByConfig(String talker) {
+    Object raw = getMergedGroupConfigValue(talker, "enabled");
+    if (raw instanceof Boolean) {
+        return ((Boolean) raw).booleanValue();
+    }
+    return true;
+}
+
+boolean isGroupMentionRequired(String talker) {
+    Object raw = getMergedGroupConfigValue(talker, "require_mention");
+    if (raw instanceof Boolean) {
+        return ((Boolean) raw).booleanValue();
+    }
+    return requireMentionInGroup;
+}
+
+String resolveGroupSenderPolicy(String talker) {
+    Object raw = getMergedGroupConfigValue(talker, "group_policy");
+    if (raw != null) {
+        String policy = String.valueOf(raw).trim();
+        if ("allowlist".equals(policy) || "disabled".equals(policy) || "open".equals(policy)) {
+            return policy;
+        }
+    }
+    if (GROUP_ALLOW_FROM.size() > 0) {
+        return "allowlist";
+    }
+    return "open";
+}
+
+void addNormalizedEntries(Set target, Object rawValues) {
+    if (target == null || rawValues == null) {
+        return;
+    }
+    if (rawValues instanceof Set) {
+        java.util.Iterator it = ((Set) rawValues).iterator();
+        while (it.hasNext()) {
+            String normalized = normalizeId(String.valueOf(it.next()));
+            if (!normalized.isEmpty()) {
+                target.add(normalized);
+            }
+        }
+        return;
+    }
+    if (rawValues instanceof List) {
+        List list = (List) rawValues;
+        for (int i = 0; i < list.size(); i++) {
+            String normalized = normalizeId(String.valueOf(list.get(i)));
+            if (!normalized.isEmpty()) {
+                target.add(normalized);
+            }
+        }
+        return;
+    }
+    if (rawValues instanceof JSONArray) {
+        JSONArray array = (JSONArray) rawValues;
+        for (int i = 0; i < array.size(); i++) {
+            String normalized = normalizeId(array.getString(i));
+            if (!normalized.isEmpty()) {
+                target.add(normalized);
+            }
+        }
+    }
+}
+
+Set resolveEffectiveGroupAllowFrom(String talker) {
+    Set merged = new HashSet();
+    addNormalizedEntries(merged, GROUP_ALLOW_FROM);
+
+    java.util.HashMap exact = getExactGroupConfig(talker);
+    if (exact != null) {
+        addNormalizedEntries(merged, exact.get("allow_from"));
+        return merged;
+    }
+
+    java.util.HashMap defaults = getDefaultGroupConfig();
+    if (defaults != null) {
+        addNormalizedEntries(merged, defaults.get("allow_from"));
+    }
+    return merged;
+}
+
 boolean checkAndIncreaseSendRateLimit() {
     long now = System.currentTimeMillis();
     if (now - sendRateLimitWindowStart > 60000) {
@@ -1830,7 +1954,62 @@ void handleServerMessage(String text) {
                     requireMentionInGroup = requireMention.booleanValue();
                 }
 
-                log("收到服务端配置，group_policy=" + groupPolicy + ", group_allow_chats: " + GROUP_ALLOW_CHATS + ", no_mention_context_groups: " + NO_MENTION_CONTEXT_GROUPS + ", allow_from: " + ALLOW_FROM + ", group_allow_from: " + GROUP_ALLOW_FROM + ", require_mention_in_group=" + requireMentionInGroup);
+                JSONObject groups = data.getJSONObject("groups");
+                GROUP_CONFIGS.clear();
+                if (groups != null) {
+                    java.util.Iterator it = groups.keySet().iterator();
+                    while (it.hasNext()) {
+                        Object keyObj = it.next();
+                        if (keyObj == null) {
+                            continue;
+                        }
+                        String rawGroupId = String.valueOf(keyObj).trim();
+                        String normalizedGroupId = "*".equals(rawGroupId) ? "*" : normalizeId(rawGroupId);
+                        if (normalizedGroupId.isEmpty()) {
+                            continue;
+                        }
+
+                        JSONObject groupCfg = groups.getJSONObject(rawGroupId);
+                        if (groupCfg == null) {
+                            continue;
+                        }
+
+                        java.util.HashMap entry = new java.util.HashMap();
+
+                        Boolean groupEnabled = groupCfg.getBoolean("enabled");
+                        if (groupEnabled != null) {
+                            entry.put("enabled", groupEnabled);
+                        }
+
+                        String perGroupPolicy = groupCfg.getString("group_policy");
+                        if ("allowlist".equals(perGroupPolicy) || "disabled".equals(perGroupPolicy) || "open".equals(perGroupPolicy)) {
+                            entry.put("group_policy", perGroupPolicy);
+                        }
+
+                        Boolean perGroupRequireMention = groupCfg.getBoolean("require_mention");
+                        if (perGroupRequireMention != null) {
+                            entry.put("require_mention", perGroupRequireMention);
+                        }
+
+                        if (groupCfg.containsKey("allow_from")) {
+                            HashSet localAllowFrom = new HashSet();
+                            JSONArray localAllowFromArray = groupCfg.getJSONArray("allow_from");
+                            if (localAllowFromArray != null) {
+                                for (int i = 0; i < localAllowFromArray.size(); i++) {
+                                    String normalized = normalizeId(localAllowFromArray.getString(i));
+                                    if (!normalized.isEmpty()) {
+                                        localAllowFrom.add(normalized);
+                                    }
+                                }
+                            }
+                            entry.put("allow_from", localAllowFrom);
+                        }
+
+                        GROUP_CONFIGS.put(normalizedGroupId, entry);
+                    }
+                }
+
+                log("收到服务端配置，group_policy=" + groupPolicy + ", group_allow_chats: " + GROUP_ALLOW_CHATS + ", no_mention_context_groups: " + NO_MENTION_CONTEXT_GROUPS + ", allow_from: " + ALLOW_FROM + ", group_allow_from: " + GROUP_ALLOW_FROM + ", require_mention_in_group=" + requireMentionInGroup + ", groups=" + GROUP_CONFIGS);
             }
             sendCapabilities();
             return;

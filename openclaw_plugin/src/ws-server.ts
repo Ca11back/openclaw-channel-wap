@@ -6,6 +6,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { resolveSenderCommandAuthorization } from "openclaw/plugin-sdk";
 import {
+  buildWapClientGroupConfigs,
   CHANNEL_ID,
   DEFAULT_ACCOUNT_ID,
   DEFAULT_HOST,
@@ -22,6 +23,10 @@ import {
   resolveNoMentionContextGroups,
   resolveNoMentionContextHistoryLimit,
   resolveGroupPolicy,
+  resolveWapGroupEnabled,
+  resolveWapGroupRequireMention,
+  resolveWapGroupSenderPolicyContext,
+  resolveWapGroupSystemPrompt,
   resolveWapAccount,
   type WapAccount,
 } from "./config.js";
@@ -464,7 +469,9 @@ function handleConnection(ws: WebSocket, req: IncomingMessage, api: OpenClawPlug
   const groupAllowChats = resolveGroupAllowChats(account.config);
   const groupAllowFrom = resolveGroupAllowFrom(account.config);
   const noMentionContextGroups = resolveNoMentionContextGroups(account.config);
-  const requireMentionInGroup = account.config.requireMentionInGroup ?? true;
+  const requireMentionInGroup = resolveWapGroupRequireMention({
+    config: account.config,
+  });
   const silentPairing = account.config.silentPairing ?? true;
 
   ws.send(
@@ -479,6 +486,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage, api: OpenClawPlug
         dm_policy: account.config.dmPolicy ?? "pairing",
         require_mention_in_group: requireMentionInGroup,
         silent_pairing: silentPairing,
+        groups: buildWapClientGroupConfigs(account.config),
       },
     }),
   );
@@ -865,11 +873,22 @@ async function processWapInboundMessage(params: {
   const groupSubject = isGroup ? resolveWapGroupSubject(msgData, routePeerId) : undefined;
   const dmPolicy = client.account.config.dmPolicy ?? "pairing";
   const allowFrom = resolveAllowFrom(client.account.config);
-  const groupPolicy = resolveGroupPolicy(client.account.config);
+  const groupAdmissionPolicy = resolveGroupPolicy(client.account.config);
   const groupAllowChats = resolveGroupAllowChats(client.account.config);
-  const groupAllowFrom = resolveGroupAllowFrom(client.account.config);
   const noMentionContextGroups = resolveNoMentionContextGroups(client.account.config);
   const noMentionContextHistoryLimit = resolveNoMentionContextHistoryLimit(client.account.config);
+  const groupEnabled = isGroup
+    ? resolveWapGroupEnabled({
+        config: client.account.config,
+        groupId: routePeerId,
+      })
+    : undefined;
+  const groupSenderContext = isGroup
+    ? resolveWapGroupSenderPolicyContext({
+        config: client.account.config,
+        groupId: routePeerId,
+      })
+    : null;
   const storeAllowFrom = isGroup
     ? []
     : await readAllowFromStoreCompat({
@@ -879,7 +898,9 @@ async function processWapInboundMessage(params: {
       });
   const effectiveDmAllowFrom =
     dmPolicy === "allowlist" ? allowFrom : [...allowFrom, ...storeAllowFrom];
-  const configuredAllowFrom = isGroup ? groupAllowFrom : effectiveDmAllowFrom;
+  const configuredAllowFrom = isGroup
+    ? (groupSenderContext?.senderAllowFrom ?? [])
+    : effectiveDmAllowFrom;
   const senderAllowed = isGroup
     ? isSenderAllowed(senderIdForPolicy, configuredAllowFrom, true)
     : dmSenderCandidates.some((candidate) =>
@@ -887,17 +908,29 @@ async function processWapInboundMessage(params: {
       );
 
   if (isGroup) {
-    if (!isGroupChatAllowed(msgData.talker, groupPolicy, groupAllowChats)) {
+    if (!isGroupChatAllowed(msgData.talker, groupAdmissionPolicy, groupAllowChats)) {
       api.logger.debug(
-        `WAP drop group message from ${msgData.sender}: group ${msgData.talker} blocked by policy=${groupPolicy}`,
+        `WAP drop group message from ${msgData.sender}: group ${msgData.talker} blocked by policy=${groupAdmissionPolicy}`,
       );
       return;
     }
-    if (configuredAllowFrom.length > 0 && !senderAllowed) {
+    if (groupEnabled === false) {
+      api.logger.debug(`WAP drop group message from ${msgData.sender}: group ${msgData.talker} disabled by groups config`);
+      return;
+    }
+    const senderPolicy = groupSenderContext?.senderPolicy ?? "open";
+    if (senderPolicy === "disabled") {
+      api.logger.debug(`WAP drop group message from ${msgData.sender}: sender policy disabled for ${msgData.talker}`);
+      return;
+    }
+    if (senderPolicy === "allowlist" && configuredAllowFrom.length > 0 && !senderAllowed) {
       api.logger.debug(`WAP drop group message from ${msgData.sender}: sender not allowlisted`);
       return;
     }
-    const requireMention = client.account.config.requireMentionInGroup ?? true;
+    const requireMention = resolveWapGroupRequireMention({
+      config: client.account.config,
+      groupId: routePeerId,
+    });
     if (requireMention && msgData.is_at_me !== true) {
       if (isNoMentionContextGroupEnabled(msgData.talker, noMentionContextGroups)) {
         appendPendingHistory(
@@ -966,7 +999,7 @@ async function processWapInboundMessage(params: {
     isGroup,
     dmPolicy,
     configuredAllowFrom: allowFrom,
-    configuredGroupAllowFrom: groupAllowFrom,
+    configuredGroupAllowFrom: isGroup ? configuredAllowFrom : undefined,
     senderId: senderIdForPolicy,
     isSenderAllowed: (senderId, effectiveAllowFrom) =>
       isSenderAllowed(senderId, effectiveAllowFrom, isGroup ? true : dmPolicy === "open"),
@@ -1040,6 +1073,13 @@ async function processWapInboundMessage(params: {
     }
   }
 
+  const groupSystemPrompt = isGroup
+    ? resolveWapGroupSystemPrompt({
+        config: client.account.config,
+        groupId: routePeerId,
+      })
+    : undefined;
+
   const ctxPayload = core.channel.reply.finalizeInboundContext({
     Body: combinedBody,
     BodyForAgent: messageBody,
@@ -1064,6 +1104,7 @@ async function processWapInboundMessage(params: {
     CommandAuthorized: commandAuth.commandAuthorized,
     OriginatingChannel: CHANNEL_ID,
     OriginatingTo: routePeerId,
+    ...(groupSystemPrompt ? { GroupSystemPrompt: groupSystemPrompt } : {}),
   });
 
   const textLimit = core.channel.text.resolveTextChunkLimit(cfg, CHANNEL_ID, client.accountId, {

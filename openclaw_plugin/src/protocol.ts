@@ -120,6 +120,15 @@ export interface WapConfigCommand {
     dm_policy: "open" | "pairing" | "allowlist" | "disabled";
     require_mention_in_group: boolean;
     silent_pairing: boolean;
+    groups?: Record<
+      string,
+      {
+        enabled?: boolean;
+        group_policy?: "open" | "allowlist" | "disabled";
+        require_mention?: boolean;
+        allow_from?: string[];
+      }
+    >;
   };
 }
 

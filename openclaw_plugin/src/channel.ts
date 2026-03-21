@@ -9,6 +9,9 @@ import {
   looksLikeWapTargetId,
   normalizeWapMessagingTarget,
   resolveAllowFrom,
+  resolveWapGroupRequireMention,
+  resolveWapGroupSystemPrompt,
+  resolveWapGroupToolPolicy,
   resolveWapOutboundTarget,
   resolveWapAccount,
   type WapAccount,
@@ -176,9 +179,26 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
     },
   },
   groups: {
-    resolveRequireMention: ({ cfg, accountId }) => {
+    resolveRequireMention: ({ cfg, accountId, groupId }) => {
       const account = resolveWapAccount(cfg, accountId);
-      return account.config.requireMentionInGroup ?? true;
+      return resolveWapGroupRequireMention({
+        config: account.config,
+        groupId,
+      });
+    },
+    resolveGroupIntroHint: ({ cfg, accountId, groupId }) => {
+      const account = resolveWapAccount(cfg, accountId);
+      return resolveWapGroupSystemPrompt({
+        config: account.config,
+        groupId,
+      });
+    },
+    resolveToolPolicy: ({ cfg, accountId, groupId }) => {
+      const account = resolveWapAccount(cfg, accountId);
+      return resolveWapGroupToolPolicy({
+        config: account.config,
+        groupId,
+      });
     },
   },
   messaging: {

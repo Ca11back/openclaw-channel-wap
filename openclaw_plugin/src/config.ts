@@ -8,6 +8,20 @@ export const DEFAULT_HOST = "127.0.0.1" as const;
 export type WapDmPolicy = "open" | "pairing" | "allowlist" | "disabled";
 export type WapGroupPolicy = "open" | "allowlist" | "disabled";
 
+export interface WapGroupToolPolicy {
+  allow?: string[];
+  deny?: string[];
+}
+
+export interface WapGroupConfig {
+  enabled?: boolean;
+  groupPolicy?: WapGroupPolicy;
+  requireMention?: boolean;
+  allowFrom?: string[];
+  tools?: WapGroupToolPolicy;
+  systemPrompt?: string;
+}
+
 export interface WapAccountConfig {
   enabled?: boolean;
   name?: string;
@@ -21,6 +35,7 @@ export interface WapAccountConfig {
   dmPolicy?: WapDmPolicy;
   requireMentionInGroup?: boolean;
   silentPairing?: boolean;
+  groups?: Record<string, WapGroupConfig>;
 }
 
 export interface WapChannelConfig extends WapAccountConfig {
@@ -53,7 +68,58 @@ function mergeAccountConfig(base: WapAccountConfig, next: WapAccountConfig): Wap
     groupAllowChats: next.groupAllowChats ?? base.groupAllowChats,
     groupAllowFrom: next.groupAllowFrom ?? base.groupAllowFrom,
     noMentionContextGroups: next.noMentionContextGroups ?? base.noMentionContextGroups,
+    groups: mergeGroupConfigs(base.groups, next.groups),
   };
+}
+
+function mergeToolPolicy(
+  base: WapGroupToolPolicy | undefined,
+  next: WapGroupToolPolicy | undefined,
+): WapGroupToolPolicy | undefined {
+  if (!base && !next) {
+    return undefined;
+  }
+  return {
+    allow: next?.allow ?? base?.allow,
+    deny: next?.deny ?? base?.deny,
+  };
+}
+
+function mergeGroupConfig(base: WapGroupConfig | undefined, next: WapGroupConfig | undefined): WapGroupConfig | undefined {
+  if (!base && !next) {
+    return undefined;
+  }
+  return {
+    ...base,
+    ...next,
+    allowFrom: next?.allowFrom ?? base?.allowFrom,
+    tools: mergeToolPolicy(base?.tools, next?.tools),
+  };
+}
+
+function mergeGroupConfigs(
+  base: Record<string, WapGroupConfig> | undefined,
+  next: Record<string, WapGroupConfig> | undefined,
+): Record<string, WapGroupConfig> | undefined {
+  if (!base && !next) {
+    return undefined;
+  }
+  const merged: Record<string, WapGroupConfig> = {};
+  const keys = new Set<string>([
+    ...Object.keys(base ?? {}),
+    ...Object.keys(next ?? {}),
+  ]);
+  for (const key of keys) {
+    const normalizedKey = key === "*" ? "*" : normalizeWapMessagingTarget(String(key)).trim().toLowerCase();
+    if (!normalizedKey) {
+      continue;
+    }
+    const mergedValue = mergeGroupConfig(base?.[key], next?.[key]);
+    if (mergedValue) {
+      merged[normalizedKey] = mergedValue;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 export function getWapChannelConfig(cfg: OpenClawConfig): WapChannelConfig {
@@ -92,6 +158,7 @@ export function resolveWapAccount(cfg: OpenClawConfig, accountId?: string | null
     dmPolicy: channelConfig.dmPolicy,
     requireMentionInGroup: channelConfig.requireMentionInGroup,
     silentPairing: channelConfig.silentPairing,
+    groups: channelConfig.groups,
   };
   const accountSpecific = channelConfig.accounts?.[id] ?? {};
   const merged = mergeAccountConfig(base, accountSpecific);
@@ -114,7 +181,10 @@ export function resolveGroupPolicy(config: WapAccountConfig): WapGroupPolicy {
 }
 
 export function resolveGroupAllowChats(config: WapAccountConfig): string[] {
-  return (config.groupAllowChats ?? [])
+  const explicitGroups = Object.keys(config.groups ?? {})
+    .map((entry) => String(entry))
+    .filter((entry) => entry !== "*");
+  return [...(config.groupAllowChats ?? []), ...explicitGroups]
     .map((entry) => normalizeWapMessagingTarget(String(entry)))
     .map((entry) => entry.trim().toLowerCase())
     .filter((entry) => entry.length > 0);
@@ -146,6 +216,127 @@ export function resolveNoMentionContextHistoryLimit(config: WapAccountConfig): n
     return 50;
   }
   return normalized;
+}
+
+export function resolveWapGroupConfig(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): WapGroupConfig | undefined {
+  const groupId = normalizeWapMessagingTarget(params.groupId ?? "").trim().toLowerCase();
+  if (!groupId) {
+    return undefined;
+  }
+  return params.config.groups?.[groupId];
+}
+
+export function resolveWapDefaultGroupConfig(config: WapAccountConfig): WapGroupConfig | undefined {
+  return config.groups?.["*"];
+}
+
+export function resolveWapGroupEnabled(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): boolean | undefined {
+  const groupConfig = resolveWapGroupConfig(params);
+  const defaultConfig = resolveWapDefaultGroupConfig(params.config);
+  return groupConfig?.enabled ?? defaultConfig?.enabled;
+}
+
+export function resolveWapGroupRequireMention(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): boolean {
+  const groupConfig = resolveWapGroupConfig(params);
+  const defaultConfig = resolveWapDefaultGroupConfig(params.config);
+  return groupConfig?.requireMention ?? defaultConfig?.requireMention ?? params.config.requireMentionInGroup ?? true;
+}
+
+export function resolveWapGroupToolPolicy(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): WapGroupToolPolicy | undefined {
+  const groupConfig = resolveWapGroupConfig(params);
+  const defaultConfig = resolveWapDefaultGroupConfig(params.config);
+  return groupConfig?.tools ?? defaultConfig?.tools;
+}
+
+export function resolveWapGroupSystemPrompt(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): string | undefined {
+  const groupConfig = resolveWapGroupConfig(params);
+  const defaultConfig = resolveWapDefaultGroupConfig(params.config);
+  const prompt = groupConfig?.systemPrompt ?? defaultConfig?.systemPrompt;
+  return typeof prompt === "string" && prompt.trim() ? prompt.trim() : undefined;
+}
+
+export function resolveWapGroupSenderPolicyContext(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): { senderPolicy: WapGroupPolicy; senderAllowFrom: string[] } {
+  const groupConfig = resolveWapGroupConfig(params);
+  const defaultConfig = resolveWapDefaultGroupConfig(params.config);
+  const globalAllowFrom = resolveGroupAllowFrom(params.config);
+  const senderPolicy =
+    groupConfig?.groupPolicy ??
+    defaultConfig?.groupPolicy ??
+    (globalAllowFrom.length > 0 ? "allowlist" : "open");
+  const localAllowFrom = groupConfig?.allowFrom
+    ?? (!groupConfig ? defaultConfig?.allowFrom : undefined)
+    ?? [];
+  const senderAllowFrom = [...globalAllowFrom, ...localAllowFrom]
+    .map((entry) => String(entry).trim())
+    .filter((entry) => entry.length > 0);
+  return { senderPolicy, senderAllowFrom };
+}
+
+export function buildWapClientGroupConfigs(config: WapAccountConfig): Record<
+  string,
+  {
+    enabled?: boolean;
+    group_policy?: WapGroupPolicy;
+    require_mention?: boolean;
+    allow_from?: string[];
+  }
+> {
+  const groups = config.groups ?? {};
+  const entries: Record<
+    string,
+    {
+      enabled?: boolean;
+      group_policy?: WapGroupPolicy;
+      require_mention?: boolean;
+      allow_from?: string[];
+    }
+  > = {};
+  for (const [rawKey, rawConfig] of Object.entries(groups)) {
+    const key = rawKey === "*" ? "*" : normalizeWapMessagingTarget(rawKey).trim().toLowerCase();
+    if (!key) {
+      continue;
+    }
+    const entry: {
+      enabled?: boolean;
+      group_policy?: WapGroupPolicy;
+      require_mention?: boolean;
+      allow_from?: string[];
+    } = {};
+    if (typeof rawConfig.enabled === "boolean") {
+      entry.enabled = rawConfig.enabled;
+    }
+    if (rawConfig.groupPolicy) {
+      entry.group_policy = rawConfig.groupPolicy;
+    }
+    if (typeof rawConfig.requireMention === "boolean") {
+      entry.require_mention = rawConfig.requireMention;
+    }
+    if (Array.isArray(rawConfig.allowFrom)) {
+      entry.allow_from = rawConfig.allowFrom
+        .map((value) => String(value).trim().toLowerCase())
+        .filter((value) => value.length > 0);
+    }
+    entries[key] = entry;
+  }
+  return entries;
 }
 
 export function normalizeSenderId(raw: string): string {
@@ -298,6 +489,31 @@ export const wapChannelConfigSchema = {
       groupAllowFrom: { type: "array", items: { type: "string" } },
       noMentionContextGroups: { type: "array", items: { type: "string" } },
       noMentionContextHistoryLimit: { type: "number" },
+      groups: {
+        type: "object",
+        additionalProperties: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            enabled: { type: "boolean" },
+            groupPolicy: {
+              type: "string",
+              enum: ["open", "allowlist", "disabled"],
+            },
+            requireMention: { type: "boolean" },
+            allowFrom: { type: "array", items: { type: "string" } },
+            tools: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                allow: { type: "array", items: { type: "string" } },
+                deny: { type: "array", items: { type: "string" } },
+              },
+            },
+            systemPrompt: { type: "string" },
+          },
+        },
+      },
       dmPolicy: {
         type: "string",
         enum: ["open", "pairing", "allowlist", "disabled"],
@@ -322,6 +538,31 @@ export const wapChannelConfigSchema = {
             groupAllowFrom: { type: "array", items: { type: "string" } },
             noMentionContextGroups: { type: "array", items: { type: "string" } },
             noMentionContextHistoryLimit: { type: "number" },
+            groups: {
+              type: "object",
+              additionalProperties: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  enabled: { type: "boolean" },
+                  groupPolicy: {
+                    type: "string",
+                    enum: ["open", "allowlist", "disabled"],
+                  },
+                  requireMention: { type: "boolean" },
+                  allowFrom: { type: "array", items: { type: "string" } },
+                  tools: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      allow: { type: "array", items: { type: "string" } },
+                      deny: { type: "array", items: { type: "string" } },
+                    },
+                  },
+                  systemPrompt: { type: "string" },
+                },
+              },
+            },
             dmPolicy: {
               type: "string",
               enum: ["open", "pairing", "allowlist", "disabled"],
@@ -356,6 +597,9 @@ export const wapChannelConfigSchema = {
     },
     "channels.openclaw-channel-wap.noMentionContextHistoryLimit": {
       help: "Pending context entries kept per group for no-mention messages.",
+    },
+    "channels.openclaw-channel-wap.groups": {
+      help: "Per-group overrides keyed by group talker or '*'. Supports enabled, requireMention, allowFrom, tools, and systemPrompt.",
     },
     "channels.openclaw-channel-wap.silentPairing": {
       help: "When true, pairing requests are recorded silently without auto-reply.",

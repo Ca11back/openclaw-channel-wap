@@ -123,6 +123,20 @@ At the end of this task, WAP vNext should have:
 5. basic diagnostics/status surfaces
 6. updated docs reflecting the new design
 
+## Shipped Per-Group Model
+
+Current shipped `groups` semantics:
+
+- `groups."*"` is the default per-group override bucket
+- `groups."<talker>"` is an exact group override bucket
+- top-level `groupPolicy` + `groupAllowChats` still decide whether a group is admitted at all
+- per-group `groupPolicy` and `allowFrom` are sender-level controls inside an already admitted group
+- exact group `enabled` / `requireMention` / `groupPolicy` override `*`
+- exact group `allowFrom` suppresses fallback to `groups."*".allowFrom`
+- `tools` and `systemPrompt` are host-side features
+- `enabled` / `requireMention` / `groupPolicy` / `allowFrom` are mirrored to Android for local pre-filtering
+- per-group `skills` is not shipped because the current WAP path has no equivalent runtime hook to enforce a group skill filter
+
 ## Target First-Class Tools
 
 First wave:
@@ -266,8 +280,10 @@ Success criteria:
 - [x] Run `pnpm exec tsc --noEmit`
 - [x] Consider active `wechat_send_image`
 - [x] Consider active `wechat_send_file`
-- [ ] Consider richer per-group skills/tools/systemPrompt config model
-- [ ] Record remaining follow-up work here
+- [x] Add per-group `enabled` / `requireMention` / `groupPolicy` / `allowFrom` model
+- [x] Add per-group `tools` / `systemPrompt` host hooks
+- [ ] Add per-group `skills` parity if/when WAP gains a real dispatch hook for skill filtering
+- [x] Record remaining follow-up work here
 
 ## Progress Log
 
@@ -289,11 +305,25 @@ Success criteria:
 - Bumped protocol/package/client version markers to `4.0.0`
 - Updated `README.md` and `ARCHITECTURE.md`
 - Verified host-side compile with `pnpm exec tsc --noEmit`
+- Added Feishu-style minimal per-group config surface for WAP:
+  - `groups.<talker>.enabled`
+  - `groups.<talker>.groupPolicy`
+  - `groups.<talker>.allowFrom`
+  - `groups.<talker>.requireMention`
+  - `groups.<talker>.tools`
+  - `groups.<talker>.systemPrompt`
+- Mirrored client-relevant per-group fields down to `wap_plugin/main.java` so Android pre-filtering matches host routing
+- Fixed config inheritance so channel-level `groups` also apply to the default account
+- Explicitly decided not to fake per-group `skills` support because there is no reliable WAP/SDK hook to enforce it today
 
 ## Remaining Follow-up
 
-- Group-level `skills` / `tools` / `systemPrompt` parity with Feishu is still a future refactor, not part of this completed slice
-- Java-side behavior was updated by code inspection and protocol symmetry, but no Android runtime validation was run in this session
+- Per-group `skills` parity still needs either:
+  - a WAP-specific inbound dispatch layer like `openclaw-lark`, or
+  - a new plugin-sdk/runtime hook for group skill filtering
+- Java-side behavior has been updated by code inspection and protocol symmetry, but no Android runtime validation was run in this session
+- If/when runtime validation is needed, push only `wap_plugin/` to:
+  `/sdcard/Android/media/com.tencent.mm/WAuxiliary/Plugin/openclaw-channel-wap`
 
 ## Resume Checklist
 

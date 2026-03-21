@@ -65,12 +65,30 @@ Host 侧会缓存这些能力，用于：
 | **连接认证** | Bearer Token | 插件 + 服务器 |
 | **入站控制** | allowFrom / groupAllowFrom（服务端下发） | 插件 |
 | **出站控制** | 私聊 allowFrom 验证 | 插件 |
-| **群聊门禁** | groupPolicy/groupAllowChats/groupAllowFrom/requireMentionInGroup | 插件 + 服务端 |
+| **群聊门禁** | groupPolicy/groupAllowChats + `groups.*.(enabled/groupPolicy/allowFrom/requireMention)` | 插件 + 服务端 |
 | **DM 策略** | pairing / allowlist / open / disabled | 服务端 |
 | **静默配对** | 未授权只登记 pairing 请求，不自动回消息 | 服务端 |
 | **速率限制** | 30条/分钟 | 插件 |
 | **消息重试** | 最多3次，30秒TTL | 插件 |
 | **日志脱敏** | URL/Token 掩码 | 插件 |
+
+## 🧭 群级覆盖
+
+WAP v4 当前支持一组最小但真实生效的 Feishu 风格群级覆盖：
+
+- `groups."*"`：默认群级配置
+- `groups."<talker>"`：精确群级配置
+- `enabled`：关闭某个群的入站处理
+- `groupPolicy` / `allowFrom`：控制群内哪些发送者可以触发
+- `requireMention`：覆盖默认 @ 门禁
+- `tools`：宿主侧工具 allow/deny
+- `systemPrompt`：宿主侧额外群上下文提示
+
+实现边界：
+
+- `enabled` / `groupPolicy` / `allowFrom` / `requireMention` 会同步到 Android 端本地预过滤
+- `tools` / `systemPrompt` 只在宿主侧生效
+- `skills` 尚未实现，因为当前 WAP 链路没有等价的 per-group skill dispatch hook
 
 ## 📦 目录结构
 
