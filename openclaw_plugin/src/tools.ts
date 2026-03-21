@@ -1,5 +1,5 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { buildWapClientDiagnostics, listWapFriends, listWapGroups, searchWapTarget, sendWapText } from "./operations.js";
+import { buildWapClientDiagnostics, listWapFriends, listWapGroups, searchWapTarget, sendWapMedia, sendWapText } from "./operations.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -14,6 +14,23 @@ type SearchTargetParams = {
 type SendTextParams = {
   target: string;
   content: string;
+  accountId?: string;
+};
+
+type SendImageParams = {
+  target: string;
+  source?: string;
+  imageUrl?: string;
+  caption?: string;
+  accountId?: string;
+};
+
+type SendFileParams = {
+  target: string;
+  source?: string;
+  fileUrl?: string;
+  fileName?: string;
+  caption?: string;
   accountId?: string;
 };
 
@@ -156,6 +173,84 @@ export function registerWapTools(api: OpenClawPluginApi) {
       },
     },
     { name: "wechat_send_text" },
+  );
+
+  api.registerTool(
+    {
+      name: "wechat_send_image",
+      label: "WeChat: Send Image",
+      description:
+        "Send an image through the connected WA plugin. Supports remote HTTP(S) URLs and local file paths accessible to the host.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["target"],
+        properties: {
+          target: { type: "string", description: "Target keyword or canonical id." },
+          source: { type: "string", description: "Image source URL or local file path." },
+          imageUrl: { type: "string", description: "Alias of source for image URL/path input." },
+          caption: { type: "string", description: "Optional caption sent with the image." },
+          accountId: { type: "string", description: "Optional WAP account id." },
+        },
+      },
+      async execute(_toolCallId: string, params: unknown) {
+        const p = (params ?? {}) as SendImageParams;
+        const target = normalizeOptionalString(p.target);
+        const source = normalizeOptionalString(p.source) ?? normalizeOptionalString(p.imageUrl);
+        if (!target || !source) {
+          return jsonResult({ ok: false, error: "Missing target/source" });
+        }
+        const result = await sendWapMedia({
+          target,
+          source,
+          kind: "image",
+          caption: normalizeOptionalString(p.caption),
+          accountId: normalizeOptionalString(p.accountId),
+        });
+        return jsonResult(result);
+      },
+    },
+    { name: "wechat_send_image" },
+  );
+
+  api.registerTool(
+    {
+      name: "wechat_send_file",
+      label: "WeChat: Send File",
+      description:
+        "Send a file through the connected WA plugin. Supports remote HTTP(S) URLs and local file paths accessible to the host.",
+      parameters: {
+        type: "object",
+        additionalProperties: false,
+        required: ["target"],
+        properties: {
+          target: { type: "string", description: "Target keyword or canonical id." },
+          source: { type: "string", description: "File source URL or local file path." },
+          fileUrl: { type: "string", description: "Alias of source for file URL/path input." },
+          fileName: { type: "string", description: "Optional file name override for downloads/attachments." },
+          caption: { type: "string", description: "Optional caption sent after the file." },
+          accountId: { type: "string", description: "Optional WAP account id." },
+        },
+      },
+      async execute(_toolCallId: string, params: unknown) {
+        const p = (params ?? {}) as SendFileParams;
+        const target = normalizeOptionalString(p.target);
+        const source = normalizeOptionalString(p.source) ?? normalizeOptionalString(p.fileUrl);
+        if (!target || !source) {
+          return jsonResult({ ok: false, error: "Missing target/source" });
+        }
+        const result = await sendWapMedia({
+          target,
+          source,
+          kind: "file",
+          fileName: normalizeOptionalString(p.fileName),
+          caption: normalizeOptionalString(p.caption),
+          accountId: normalizeOptionalString(p.accountId),
+        });
+        return jsonResult(result);
+      },
+    },
+    { name: "wechat_send_file" },
   );
 
   api.registerTool(

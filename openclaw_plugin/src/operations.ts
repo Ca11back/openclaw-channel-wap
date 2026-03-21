@@ -1,5 +1,5 @@
 import { DEFAULT_ACCOUNT_ID, normalizeWapMessagingTarget } from "./config.js";
-import { callClientRpc, getClientCapabilities, getClientStats, resolveTargetViaClient, sendToClient } from "./ws-server.js";
+import { buildWapMediaCommand, callClientRpc, getClientCapabilities, getClientStats, resolveTargetViaClient, sendToClient } from "./ws-server.js";
 import type { WapSendTextCommand } from "./protocol.js";
 
 export type WapFriendEntry = {
@@ -25,6 +25,8 @@ export type WapResolvedTarget = {
   displayName?: string;
   sendable?: boolean;
 };
+
+export type WapMediaToolKind = "image" | "file";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -259,6 +261,76 @@ export async function sendWapText(params: {
     talker: resolved.result.talker,
     canonicalTarget: resolved.result.canonicalTarget,
     targetKind: resolved.result.targetKind,
+    displayName: resolved.result.displayName,
+  };
+}
+
+export async function sendWapMedia(params: {
+  target: string;
+  source: string;
+  kind: WapMediaToolKind;
+  accountId?: string | null;
+  caption?: string | null;
+  fileName?: string | null;
+}): Promise<
+  | {
+      ok: true;
+      accountId: string;
+      talker: string;
+      canonicalTarget: string;
+      targetKind: "direct" | "group";
+      commandType: "send_image" | "send_file";
+      displayName?: string;
+    }
+  | { ok: false; error: string }
+> {
+  const accountId = normalizeAccountId(params.accountId);
+  const source = params.source.trim();
+  if (!source) {
+    return { ok: false, error: `Missing WeChat ${params.kind} source` };
+  }
+  const resolved = await searchWapTarget({
+    target: params.target,
+    accountId,
+  });
+  if (!resolved.ok) {
+    return resolved;
+  }
+  if (resolved.result.sendable === false) {
+    return {
+      ok: false,
+      error: `Resolved target is currently not sendable: ${resolved.result.canonicalTarget}`,
+    };
+  }
+  const command = await buildWapMediaCommand({
+    source,
+    talker: resolved.result.talker,
+    accountId,
+    caption: params.caption?.trim() || undefined,
+    kind: params.kind,
+    fileNameOverride: params.fileName?.trim() || undefined,
+  });
+  if (!command) {
+    return { ok: false, error: `Failed to prepare WeChat ${params.kind} command from source: ${source}` };
+  }
+  if (params.kind === "image" && command.type !== "send_image") {
+    return { ok: false, error: `Prepared unexpected command type for image send: ${command.type}` };
+  }
+  if (params.kind === "file" && command.type !== "send_file") {
+    return { ok: false, error: `Prepared unexpected command type for file send: ${command.type}` };
+  }
+  const commandType = params.kind === "image" ? "send_image" : "send_file";
+  const sent = sendToClient(command, accountId);
+  if (!sent) {
+    return { ok: false, error: `No connected WAP clients for account ${accountId}` };
+  }
+  return {
+    ok: true,
+    accountId,
+    talker: resolved.result.talker,
+    canonicalTarget: resolved.result.canonicalTarget,
+    targetKind: resolved.result.targetKind,
+    commandType,
     displayName: resolved.result.displayName,
   };
 }

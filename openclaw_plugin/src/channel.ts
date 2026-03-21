@@ -122,6 +122,7 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
       "- Use `wechat_search_target` to resolve ambiguous WeChat recipients before sending.",
       "- Use `wechat_get_friends` and `wechat_get_groups` when you need proactive WeChat discovery.",
       "- Use `wechat_send_text` for active WeChat outreach outside the current reply flow.",
+      "- Use `wechat_send_image` and `wechat_send_file` for proactive media delivery; they support remote URLs and local host paths.",
     ],
   },
   reload: { configPrefixes: [`channels.${CHANNEL_ID}`] },

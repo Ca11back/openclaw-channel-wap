@@ -685,14 +685,17 @@ export async function buildWapMediaCommand(params: {
   talker: string;
   accountId: string;
   caption?: string;
+  kind?: "auto" | "image" | "file";
+  fileNameOverride?: string;
 }): Promise<WapDownstreamCommand | null> {
   const source = params.source.trim();
   if (!source) {
     return null;
   }
   const caption = params.caption || undefined;
+  const kind = params.kind ?? "auto";
   if (/^https?:\/\//i.test(source)) {
-    if (looksLikeImageMedia(source)) {
+    if (kind === "image" || (kind === "auto" && looksLikeImageMedia(source))) {
       return {
         type: "send_image",
         data: {
@@ -707,7 +710,7 @@ export async function buildWapMediaCommand(params: {
       data: {
         talker: params.talker,
         file_url: source,
-        file_name: extractFileNameFromUrl(source),
+        file_name: sanitizeFileName(params.fileNameOverride, extractFileNameFromUrl(source)),
         caption,
       },
     };
@@ -730,7 +733,7 @@ export async function buildWapMediaCommand(params: {
   }
 
   const fileId = randomUUID();
-  const fileName = sanitizeFileName(path.basename(localPath), "wap_media.bin");
+  const fileName = sanitizeFileName(params.fileNameOverride, path.basename(localPath));
   const now = Date.now();
   tempFiles.set(fileId, {
     accountId: params.accountId,
@@ -739,7 +742,7 @@ export async function buildWapMediaCommand(params: {
     expiresAt: now + TEMP_FILE_TTL_MS,
   });
 
-  if (looksLikeImageMedia(localPath)) {
+  if (kind === "image" || (kind === "auto" && looksLikeImageMedia(localPath))) {
     return {
       type: "send_image",
       data: {

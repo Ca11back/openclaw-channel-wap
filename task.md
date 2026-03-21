@@ -131,9 +131,6 @@ First wave:
 - `wechat_get_groups`
 - `wechat_search_target`
 - `wechat_send_text`
-
-Second wave if practical in this rollout:
-
 - `wechat_send_image`
 - `wechat_send_file`
 
@@ -267,8 +264,8 @@ Success criteria:
 - [x] Add `/wap` diagnostics commands
 - [x] Update root docs
 - [x] Run `pnpm exec tsc --noEmit`
-- [ ] Consider active `wechat_send_image`
-- [ ] Consider active `wechat_send_file`
+- [x] Consider active `wechat_send_image`
+- [x] Consider active `wechat_send_file`
 - [ ] Consider richer per-group skills/tools/systemPrompt config model
 - [ ] Record remaining follow-up work here
 
@@ -284,6 +281,7 @@ Success criteria:
 - Implemented host-side capability/RPC handling in `openclaw_plugin/src/ws-server.ts`
 - Added reusable host operations in `openclaw_plugin/src/operations.ts`
 - Registered active WeChat tools in `openclaw_plugin/src/tools.ts`
+- Extended active WeChat tools with `wechat_send_image` and `wechat_send_file`
 - Registered `/wap` and `wap-diagnose` diagnostics in `openclaw_plugin/src/commands.ts`
 - Enabled channel-level prompt hints, directory hooks, and security warnings
 - Implemented Android-side `capabilities`, `rpc_request`, and `rpc_result` support in `wap_plugin/main.java`
@@ -294,7 +292,6 @@ Success criteria:
 
 ## Remaining Follow-up
 
-- Active image/file tools are not registered yet; current active send surface is text-first
 - Group-level `skills` / `tools` / `systemPrompt` parity with Feishu is still a future refactor, not part of this completed slice
 - Java-side behavior was updated by code inspection and protocol symmetry, but no Android runtime validation was run in this session
 

@@ -10,6 +10,8 @@
   - `wechat_get_groups`
   - `wechat_search_target`
   - `wechat_send_text`
+  - `wechat_send_image`
+  - `wechat_send_file`
   - `wechat_capabilities`
 - WA 客户端会在连接后主动上报能力，并支持宿主侧通过 `rpc_request` / `rpc_result` 查询好友、群聊、目标解析等能力
 - 新增基础诊断命令：
@@ -117,6 +119,8 @@ message_ttl_ms: 30000
 - `wechat_get_groups`：读取当前账号群聊列表
 - `wechat_search_target`：将关键字目标解析为 canonical `user:wxid` / `group:*@chatroom`
 - `wechat_send_text`：主动发送文本消息
+- `wechat_send_image`：主动发送图片，支持远端 URL 或宿主机本地文件路径
+- `wechat_send_file`：主动发送文件，支持远端 URL 或宿主机本地文件路径
 - `wechat_capabilities`：查看已连接 WA 客户端的能力声明
 
 当前插件还会注册以下命令：
