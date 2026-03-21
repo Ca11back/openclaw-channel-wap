@@ -323,6 +323,7 @@ Success criteria:
 
 ## Remaining Follow-up
 
+- The local development snapshot under `openclaw_plugin/node_modules/openclaw` is still `2026.1.29` and only ships `dist/plugin-sdk/index.js`; real runtime verification of the new subpath imports requires OpenClaw `>= 2026.3.11`
 - Per-group `skills` parity still needs either:
   - a WAP-specific inbound dispatch layer like `openclaw-lark`, or
   - a new plugin-sdk/runtime hook for group skill filtering
