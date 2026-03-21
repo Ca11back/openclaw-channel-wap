@@ -149,6 +149,8 @@ message_ttl_ms: 30000
 - `wechat_send_file`：主动发送文件，支持远端 URL 或宿主机本地文件路径
 - `wechat_capabilities`：查看已连接 WA 客户端的能力声明
 
+当前 WAP 的 channel action 仅公开 `search`；主动发送统一走上述 `wechat_send_*` 工具，不再保留隐式 `send` action 兼容入口。
+
 当前插件还会注册以下命令：
 
 - `/wap doctor`

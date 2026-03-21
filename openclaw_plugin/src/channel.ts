@@ -47,30 +47,6 @@ function buildPairingApproveHint(): string {
   return `Approve via: openclaw pairing list ${CHANNEL_ID} / openclaw pairing approve ${CHANNEL_ID} <code>`;
 }
 
-function pickString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeToolTarget(raw: string): string {
-  const normalized = normalizeWapMessagingTarget(raw);
-  if (!normalized) {
-    return "";
-  }
-  const prefixed = normalized.match(/^(group|direct|user|friend):(.+)$/i);
-  if (!prefixed) {
-    return normalized;
-  }
-  const prefix = prefixed[1].toLowerCase();
-  const body = prefixed[2]?.trim() ?? "";
-  if (!body) {
-    return "";
-  }
-  if (prefix === "group") {
-    return body.endsWith("@chatroom") ? `group:${body}` : "";
-  }
-  return `user:${body}`;
-}
-
 function parseSendTarget(raw: string): { target: string; kind: "direct" | "group" } | null {
   const normalized = normalizeWapMessagingTarget(raw);
   if (!normalized) {
@@ -244,33 +220,6 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
   actions: {
     listActions: () => ["search"],
     supportsAction: ({ action }) => action === "search",
-    extractToolSend: ({ args }) => {
-      const action = pickString(args.action).toLowerCase();
-      if (action && action !== "send") {
-        getWapRuntime()?.logger.debug(
-          `WAP extractToolSend skipped non-send action=${action || "<empty>"}`,
-        );
-        return null;
-      }
-      const rawTarget =
-        pickString(args.target) ||
-        pickString(args.to) ||
-        pickString(args.recipient) ||
-        pickString(args.talker);
-      const to = normalizeToolTarget(rawTarget);
-      if (!to) {
-        getWapRuntime()?.logger.debug(
-          `WAP extractToolSend no target resolved rawTarget=${rawTarget || "<empty>"}`,
-        );
-        return null;
-      }
-      const accountId =
-        pickString(args.accountId) ||
-        pickString(args.account_id) ||
-        pickString(args.account) ||
-        null;
-      return { to, accountId };
-    },
     handleAction: async ({ action, params, accountId }) => {
       const runtime = getWapRuntime();
       runtime?.logger.debug(

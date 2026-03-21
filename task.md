@@ -320,6 +320,7 @@ Success criteria:
   - `openclaw/plugin-sdk/command-auth`
 - Replaced the old root-barrel local type shim with subpath-scoped declarations and re-verified `pnpm exec tsc --noEmit`
 - Raised WAP peer compatibility floor to `openclaw >= 2026.3.11`, which is the era where official subpath-based plugin SDK usage is expected
+- Removed the hidden `extractToolSend` send compatibility path; WAP channel actions now expose only `search`, and proactive sending is routed through explicit `wechat_send_*` tools
 
 ## Remaining Follow-up
 
