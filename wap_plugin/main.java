@@ -44,6 +44,7 @@ java.util.Map GROUP_CONFIGS = Collections.synchronizedMap(new java.util.HashMap(
 boolean configReceived = false;  // 是否已收到服务端配置
 String groupPolicy = "open";  // 群策略: open/allowlist/disabled
 boolean requireMentionInGroup = true;  // 群聊是否必须 @ 才触发
+boolean respondToMentionAllInGroup = false;  // 群聊中 @所有人 / 群公告全体 是否可视为 mention
 
 // 心跳间隔（毫秒）
 long DEFAULT_HEARTBEAT_INTERVAL = 20000;
@@ -303,6 +304,7 @@ void connectToServer() {
             GROUP_CONFIGS.clear();
             groupPolicy = "open";
             requireMentionInGroup = true;
+            respondToMentionAllInGroup = false;
             startHeartbeat();
             startRetrySender();
         }
@@ -548,6 +550,9 @@ void onHandleMsg(Object msgInfoBean) {
     String sender = msgInfoBean.getSendTalker();
     String talker = msgInfoBean.getTalker();
     boolean isMentionedMe = resolveIsMentionedMe(msgInfoBean);
+    boolean isNotifyAll = resolveIsNotifyAll(msgInfoBean);
+    boolean isAnnounceAll = resolveIsAnnounceAll(msgInfoBean);
+    boolean isMentionAll = isNotifyAll || isAnnounceAll;
 
     if (msgInfoBean.isGroupChat()) {
         // 群策略过滤（仿 Discord/TG 的 groupPolicy 层）
@@ -566,7 +571,12 @@ void onHandleMsg(Object msgInfoBean) {
             return;
         }
         // 群聊可选：仅 @ 我时触发；部分群可配置为未@也上报用于上下文
-        if (isGroupMentionRequired(talker) && !isMentionedMe && !isNoMentionContextGroupEnabled(talker)) {
+        if (
+            isGroupMentionRequired(talker)
+            && !isMentionedMe
+            && !(isMentionAll && isGroupRespondToMentionAll(talker))
+            && !isNoMentionContextGroupEnabled(talker)
+        ) {
             return;
         }
     } else {
@@ -617,6 +627,8 @@ void onHandleMsg(Object msgInfoBean) {
         data.put("is_private", msgInfoBean.isPrivateChat());
         data.put("is_group", msgInfoBean.isGroupChat());
         data.put("is_at_me", isMentionedMe);
+        data.put("is_notify_all", isNotifyAll);
+        data.put("is_announce_all", isAnnounceAll);
         List atUsers = msgInfoBean.getAtUserList();
         if (atUsers != null) {
             data.put("at_user_list", atUsers);
@@ -806,6 +818,20 @@ boolean resolveIsMentionedMe(Object msgInfoBean) {
     } catch (Exception e) {
         log("解析 @我 状态失败: " + e.getMessage());
     }
+    return false;
+}
+
+boolean resolveIsNotifyAll(Object msgInfoBean) {
+    try {
+        return msgInfoBean.isGroupChat() && msgInfoBean.isNotifyAll();
+    } catch (Exception e) {}
+    return false;
+}
+
+boolean resolveIsAnnounceAll(Object msgInfoBean) {
+    try {
+        return msgInfoBean.isGroupChat() && msgInfoBean.isAnnounceAll();
+    } catch (Exception e) {}
     return false;
 }
 
@@ -1454,6 +1480,14 @@ boolean isGroupMentionRequired(String talker) {
         return ((Boolean) raw).booleanValue();
     }
     return requireMentionInGroup;
+}
+
+boolean isGroupRespondToMentionAll(String talker) {
+    Object raw = getMergedGroupConfigValue(talker, "respond_to_mention_all");
+    if (raw instanceof Boolean) {
+        return ((Boolean) raw).booleanValue();
+    }
+    return respondToMentionAllInGroup;
 }
 
 String resolveGroupSenderPolicy(String talker) {
@@ -2262,7 +2296,7 @@ void sendCapabilities() {
         JSONObject payload = new JSONObject();
         payload.put("type", "capabilities");
         JSONObject data = new JSONObject();
-        data.put("protocol_version", "wap-vnext-2026-03-24");
+        data.put("protocol_version", "wap-vnext-2026-03-28");
         data.put("client_name", "openclaw-channel-wap");
         data.put("client_version", "5.0.0");
 
@@ -2404,6 +2438,11 @@ void handleServerMessage(String text) {
                     requireMentionInGroup = requireMention.booleanValue();
                 }
 
+                Boolean respondToMentionAll = data.getBoolean("respond_to_mention_all_in_group");
+                if (respondToMentionAll != null) {
+                    respondToMentionAllInGroup = respondToMentionAll.booleanValue();
+                }
+
                 JSONObject groups = data.getJSONObject("groups");
                 GROUP_CONFIGS.clear();
                 if (groups != null) {
@@ -2441,6 +2480,11 @@ void handleServerMessage(String text) {
                             entry.put("require_mention", perGroupRequireMention);
                         }
 
+                        Boolean perGroupRespondToMentionAll = groupCfg.getBoolean("respond_to_mention_all");
+                        if (perGroupRespondToMentionAll != null) {
+                            entry.put("respond_to_mention_all", perGroupRespondToMentionAll);
+                        }
+
                         if (groupCfg.containsKey("allow_from")) {
                             HashSet localAllowFrom = new HashSet();
                             JSONArray localAllowFromArray = groupCfg.getJSONArray("allow_from");
@@ -2459,7 +2503,7 @@ void handleServerMessage(String text) {
                     }
                 }
 
-                log("收到服务端配置，group_policy=" + groupPolicy + ", group_allow_chats: " + GROUP_ALLOW_CHATS + ", no_mention_context_groups: " + NO_MENTION_CONTEXT_GROUPS + ", allow_from: " + ALLOW_FROM + ", group_allow_from: " + GROUP_ALLOW_FROM + ", require_mention_in_group=" + requireMentionInGroup + ", groups=" + GROUP_CONFIGS);
+                log("收到服务端配置，group_policy=" + groupPolicy + ", group_allow_chats: " + GROUP_ALLOW_CHATS + ", no_mention_context_groups: " + NO_MENTION_CONTEXT_GROUPS + ", allow_from: " + ALLOW_FROM + ", group_allow_from: " + GROUP_ALLOW_FROM + ", require_mention_in_group=" + requireMentionInGroup + ", respond_to_mention_all_in_group=" + respondToMentionAllInGroup + ", groups=" + GROUP_CONFIGS);
             }
             sendCapabilities();
             return;

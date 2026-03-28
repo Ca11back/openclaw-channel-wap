@@ -17,6 +17,7 @@ export interface WapGroupConfig {
   enabled?: boolean;
   groupPolicy?: WapGroupPolicy;
   requireMention?: boolean;
+  respondToMentionAll?: boolean;
   allowFrom?: string[];
   tools?: WapGroupToolPolicy;
   skills?: string[];
@@ -35,6 +36,7 @@ export interface WapAccountConfig {
   noMentionContextHistoryLimit?: number;
   dmPolicy?: WapDmPolicy;
   requireMentionInGroup?: boolean;
+  respondToMentionAll?: boolean;
   silentPairing?: boolean;
   groups?: Record<string, WapGroupConfig>;
 }
@@ -159,6 +161,7 @@ export function resolveWapAccount(cfg: OpenClawConfig, accountId?: string | null
     noMentionContextHistoryLimit: channelConfig.noMentionContextHistoryLimit,
     dmPolicy: channelConfig.dmPolicy,
     requireMentionInGroup: channelConfig.requireMentionInGroup,
+    respondToMentionAll: channelConfig.respondToMentionAll,
     silentPairing: channelConfig.silentPairing,
     groups: channelConfig.groups,
   };
@@ -253,6 +256,15 @@ export function resolveWapGroupRequireMention(params: {
   return groupConfig?.requireMention ?? defaultConfig?.requireMention ?? params.config.requireMentionInGroup ?? true;
 }
 
+export function resolveWapGroupRespondToMentionAll(params: {
+  config: WapAccountConfig;
+  groupId?: string | null;
+}): boolean {
+  const groupConfig = resolveWapGroupConfig(params);
+  const defaultConfig = resolveWapDefaultGroupConfig(params.config);
+  return groupConfig?.respondToMentionAll ?? defaultConfig?.respondToMentionAll ?? params.config.respondToMentionAll ?? false;
+}
+
 export function resolveWapGroupToolPolicy(params: {
   config: WapAccountConfig;
   groupId?: string | null;
@@ -317,6 +329,7 @@ export function buildWapClientGroupConfigs(config: WapAccountConfig): Record<
     enabled?: boolean;
     group_policy?: WapGroupPolicy;
     require_mention?: boolean;
+    respond_to_mention_all?: boolean;
     allow_from?: string[];
   }
 > {
@@ -327,6 +340,7 @@ export function buildWapClientGroupConfigs(config: WapAccountConfig): Record<
       enabled?: boolean;
       group_policy?: WapGroupPolicy;
       require_mention?: boolean;
+      respond_to_mention_all?: boolean;
       allow_from?: string[];
     }
   > = {};
@@ -339,6 +353,7 @@ export function buildWapClientGroupConfigs(config: WapAccountConfig): Record<
       enabled?: boolean;
       group_policy?: WapGroupPolicy;
       require_mention?: boolean;
+      respond_to_mention_all?: boolean;
       allow_from?: string[];
     } = {};
     if (typeof rawConfig.enabled === "boolean") {
@@ -349,6 +364,9 @@ export function buildWapClientGroupConfigs(config: WapAccountConfig): Record<
     }
     if (typeof rawConfig.requireMention === "boolean") {
       entry.require_mention = rawConfig.requireMention;
+    }
+    if (typeof rawConfig.respondToMentionAll === "boolean") {
+      entry.respond_to_mention_all = rawConfig.respondToMentionAll;
     }
     if (Array.isArray(rawConfig.allowFrom)) {
       entry.allow_from = rawConfig.allowFrom
@@ -565,6 +583,7 @@ export const wapChannelConfigSchema = {
               enum: ["open", "allowlist", "disabled"],
             },
             requireMention: { type: "boolean" },
+            respondToMentionAll: { type: "boolean" },
             allowFrom: { type: "array", items: { type: "string" } },
             tools: {
               type: "object",
@@ -584,6 +603,7 @@ export const wapChannelConfigSchema = {
         enum: ["open", "pairing", "allowlist", "disabled"],
       },
       requireMentionInGroup: { type: "boolean" },
+      respondToMentionAll: { type: "boolean" },
       silentPairing: { type: "boolean" },
       accounts: {
         type: "object",
@@ -615,6 +635,7 @@ export const wapChannelConfigSchema = {
                     enum: ["open", "allowlist", "disabled"],
                   },
                   requireMention: { type: "boolean" },
+                  respondToMentionAll: { type: "boolean" },
                   allowFrom: { type: "array", items: { type: "string" } },
                   tools: {
                     type: "object",
@@ -634,6 +655,7 @@ export const wapChannelConfigSchema = {
               enum: ["open", "pairing", "allowlist", "disabled"],
             },
             requireMentionInGroup: { type: "boolean" },
+            respondToMentionAll: { type: "boolean" },
             silentPairing: { type: "boolean" },
           },
         },
@@ -652,6 +674,9 @@ export const wapChannelConfigSchema = {
     "channels.openclaw-channel-wap.requireMentionInGroup": {
       help: "When true, group messages trigger only when @mentioned.",
     },
+    "channels.openclaw-channel-wap.respondToMentionAll": {
+      help: "When true, @所有人 / 群公告全体 can satisfy mention gating in groups. Default false.",
+    },
     "channels.openclaw-channel-wap.groupPolicy": {
       help: "Group policy: open (all groups), allowlist (groupAllowChats only), disabled.",
     },
@@ -665,7 +690,7 @@ export const wapChannelConfigSchema = {
       help: "Pending context entries kept per group for no-mention messages.",
     },
     "channels.openclaw-channel-wap.groups": {
-      help: "Per-group overrides keyed by group talker or '*'. Supports enabled, requireMention, allowFrom, tools, skills, and systemPrompt.",
+      help: "Per-group overrides keyed by group talker or '*'. Supports enabled, requireMention, respondToMentionAll, allowFrom, tools, skills, and systemPrompt.",
     },
     "channels.openclaw-channel-wap.silentPairing": {
       help: "When true, pairing requests are recorded silently without auto-reply.",

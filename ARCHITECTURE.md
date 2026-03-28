@@ -110,7 +110,7 @@ Android 下行 `send_*` 命令中只使用最终 talker：
 
 当前快照：
 
-- `protocol_version = wap-vnext-2026-03-24`
+- `protocol_version = wap-vnext-2026-03-28`
 - `client_version = 5.0.0`
 - `rpc_methods = ["get_friends", "get_groups", "lookup_targets"]`
 - `command_types = ["send_text", "send_image", "send_file"]`
@@ -167,6 +167,7 @@ Host 侧在 preflight 或传输层还会补充：
 
 - `allowFrom` 控制私聊主动发送目标
 - `groupPolicy` / `groupAllowChats` / `groups.<talker>.*` 控制入站群聊过滤
+- `respondToMentionAll` 可选地把 `@所有人` / 群公告全体视为满足 mention gate
 - 发送速率限制默认 30 条 / 分钟
 - `send_*` 仅接受 canonical talker
 
@@ -187,13 +188,14 @@ Host 侧在 preflight 或传输层还会补充：
 - `groupPolicy`
 - `allowFrom`
 - `requireMention`
+- `respondToMentionAll`
 - `tools`
 - `skills`
 - `systemPrompt`
 
 边界：
 
-- `enabled` / `groupPolicy` / `allowFrom` / `requireMention` 下发到 Android 端
+- `enabled` / `groupPolicy` / `allowFrom` / `requireMention` / `respondToMentionAll` 下发到 Android 端
 - `tools` / `skills` / `systemPrompt` 只在 Host 侧生效
 
 ## 当前标准对齐
@@ -208,5 +210,5 @@ WAP 当前实现按最新 OpenClaw 标准对齐：
 ## 版本
 
 - WAP version: `5.0.0`
-- Protocol snapshot: `wap-vnext-2026-03-24`
+- Protocol snapshot: `wap-vnext-2026-03-28`
 - 要求 Host 与 `wap_plugin` 同步升级

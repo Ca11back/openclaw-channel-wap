@@ -5,7 +5,7 @@
 ## v5 设计
 
 - 当前版本为 **v5.0.0**
-- 协议快照为 `wap-vnext-2026-03-24`
+- 协议快照为 `wap-vnext-2026-03-28`
 - 不兼容旧版 `wap_plugin`
 - 不再保留旧接口：
   - `search_target`
@@ -54,6 +54,7 @@ openclaw plugins install openclaw-channel-wap
       "noMentionContextHistoryLimit": 8,
       "dmPolicy": "pairing",
       "requireMentionInGroup": true,
+      "respondToMentionAll": false,
       "silentPairing": true,
       "accounts": {
         "phone-a": {
@@ -67,10 +68,12 @@ openclaw plugins install openclaw-channel-wap
           "noMentionContextHistoryLimit": 8,
           "dmPolicy": "pairing",
           "requireMentionInGroup": true,
+          "respondToMentionAll": false,
           "silentPairing": true,
           "groups": {
             "*": {
               "requireMention": true,
+              "respondToMentionAll": false,
               "tools": {
                 "allow": ["wechat_lookup_targets", "wechat_capabilities"]
               }
@@ -79,7 +82,8 @@ openclaw plugins install openclaw-channel-wap
               "enabled": true,
               "groupPolicy": "allowlist",
               "allowFrom": ["wxid_owner_a", "wxid_operator_a"],
-              "requireMention": false,
+              "requireMention": true,
+              "respondToMentionAll": true,
               "skills": ["product-search", "release-checklist"],
               "systemPrompt": "这是产品群，优先给出结论和下一步。"
             }
@@ -90,6 +94,17 @@ openclaw plugins install openclaw-channel-wap
   }
 }
 ```
+
+`respondToMentionAll` 默认为 `false`，仅在群聊 mention gate 开启时生效。
+
+优先级：
+
+- `groups."<talker>".respondToMentionAll`
+- `groups."*".respondToMentionAll`
+- account / channel 级 `respondToMentionAll`
+- 默认 `false`
+
+当它为 `true` 时，WAuxiliary 上报的 `@所有人` / 群公告全体会被视为满足 mention 条件。
 
 ### 3. 配置 Android 插件
 
@@ -184,7 +199,7 @@ discovery 不会因为目标不可发送就把候选吞掉。
 {
   "type": "capabilities",
   "data": {
-    "protocol_version": "wap-vnext-2026-03-24",
+    "protocol_version": "wap-vnext-2026-03-28",
     "client_name": "openclaw-channel-wap",
     "client_version": "5.0.0",
     "rpc_methods": ["get_friends", "get_groups", "lookup_targets"],

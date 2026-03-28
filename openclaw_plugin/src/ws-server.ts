@@ -25,6 +25,7 @@ import {
   resolveGroupPolicy,
   resolveWapGroupEnabled,
   resolveWapGroupRequireMention,
+  resolveWapGroupRespondToMentionAll,
   resolveWapGroupSenderPolicyContext,
   resolveWapGroupSkillFilter,
   resolveWapGroupSystemPrompt,
@@ -155,6 +156,8 @@ function buildWapUntrustedContext(msgData: WapMessageData): string[] {
       Array.isArray(msgData.at_user_list) && msgData.at_user_list.length > 0
         ? msgData.at_user_list
         : undefined,
+    is_notify_all: msgData.is_notify_all === true ? true : undefined,
+    is_announce_all: msgData.is_announce_all === true ? true : undefined,
     is_quote: msgData.is_quote === true ? true : undefined,
     quote_title: pickFirstNonEmpty(msgData.quote_title),
     quote_content: pickFirstNonEmpty(msgData.quote_content),
@@ -477,6 +480,9 @@ function handleConnection(ws: WebSocket, req: IncomingMessage, api: OpenClawPlug
   const requireMentionInGroup = resolveWapGroupRequireMention({
     config: account.config,
   });
+  const respondToMentionAllInGroup = resolveWapGroupRespondToMentionAll({
+    config: account.config,
+  });
   const silentPairing = account.config.silentPairing ?? true;
 
   ws.send(
@@ -490,6 +496,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage, api: OpenClawPlug
         no_mention_context_groups: noMentionContextGroups,
         dm_policy: account.config.dmPolicy ?? "pairing",
         require_mention_in_group: requireMentionInGroup,
+        respond_to_mention_all_in_group: respondToMentionAllInGroup,
         silent_pairing: silentPairing,
         groups: buildWapClientGroupConfigs(account.config),
       },
@@ -913,6 +920,16 @@ async function processWapInboundMessage(params: {
     : dmSenderCandidates.some((candidate) =>
         isSenderAllowed(candidate, configuredAllowFrom, dmPolicy === "open"),
       );
+  const mentionAllDetected = isGroup && (msgData.is_notify_all === true || msgData.is_announce_all === true);
+  const respondToMentionAll = isGroup
+    ? resolveWapGroupRespondToMentionAll({
+        config: client.account.config,
+        groupId: routePeerId,
+      })
+    : false;
+  const wasMentioned = isGroup
+    ? msgData.is_at_me === true || (respondToMentionAll && mentionAllDetected)
+    : false;
 
   if (isGroup) {
     if (!isGroupChatAllowed(msgData.talker, groupAdmissionPolicy, groupAllowChats)) {
@@ -938,7 +955,7 @@ async function processWapInboundMessage(params: {
       config: client.account.config,
       groupId: routePeerId,
     });
-    if (requireMention && msgData.is_at_me !== true) {
+    if (requireMention && !wasMentioned) {
       if (isNoMentionContextGroupEnabled(msgData.talker, noMentionContextGroups)) {
         appendPendingHistory(
           client.accountId,
@@ -1114,7 +1131,7 @@ async function processWapInboundMessage(params: {
     Surface: WAP_MESSAGE_PROVIDER,
     MessageSid: String(msgData.msg_id),
     Timestamp: msgData.timestamp,
-    WasMentioned: isGroup ? msgData.is_at_me === true : undefined,
+    WasMentioned: isGroup ? wasMentioned : undefined,
     UntrustedContext: buildWapUntrustedContext(msgData),
     CommandAuthorized: commandAuth.commandAuthorized,
     OriginatingChannel: CHANNEL_ID,
@@ -1330,6 +1347,8 @@ function validateUpstreamMessage(data: unknown): WapUpstreamMessage | null {
   const atUserList = Array.isArray(d.at_user_list)
     ? d.at_user_list.map((entry) => String(entry))
     : [];
+  const isNotifyAll = typeof d.is_notify_all === "boolean" ? d.is_notify_all : false;
+  const isAnnounceAll = typeof d.is_announce_all === "boolean" ? d.is_announce_all : false;
   const senderDisplayName = typeof d.sender_display_name === "string" ? d.sender_display_name : undefined;
   const senderGroupDisplayName =
     typeof d.sender_group_display_name === "string" ? d.sender_group_display_name : undefined;
@@ -1363,6 +1382,8 @@ function validateUpstreamMessage(data: unknown): WapUpstreamMessage | null {
       is_group: d.is_group,
       is_at_me: isAtMe,
       at_user_list: atUserList,
+      is_notify_all: isNotifyAll,
+      is_announce_all: isAnnounceAll,
       is_quote: isQuote,
       quote_title: quoteTitle,
       quote_content: quoteContent,

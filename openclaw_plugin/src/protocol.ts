@@ -30,6 +30,8 @@ export interface WapMessageData {
   is_group: boolean;
   is_at_me?: boolean;
   at_user_list?: string[];
+  is_notify_all?: boolean;
+  is_announce_all?: boolean;
   is_quote?: boolean;
   quote_title?: string;
   quote_content?: string;
@@ -120,6 +122,7 @@ export interface WapConfigCommand {
     no_mention_context_groups: string[];
     dm_policy: "open" | "pairing" | "allowlist" | "disabled";
     require_mention_in_group: boolean;
+    respond_to_mention_all_in_group: boolean;
     silent_pairing: boolean;
     groups?: Record<
       string,
@@ -127,6 +130,7 @@ export interface WapConfigCommand {
         enabled?: boolean;
         group_policy?: "open" | "allowlist" | "disabled";
         require_mention?: boolean;
+        respond_to_mention_all?: boolean;
         allow_from?: string[];
       }
     >;
