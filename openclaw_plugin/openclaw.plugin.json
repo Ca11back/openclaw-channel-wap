@@ -1,5 +1,8 @@
 {
     "id": "openclaw-channel-wap",
+    "name": "WeChat (WAP)",
+    "description": "WeChat channel plugin via WAuxiliary",
+    "version": "5.0.0",
     "channels": [
         "openclaw-channel-wap"
     ],

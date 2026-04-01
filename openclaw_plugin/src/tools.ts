@@ -3,7 +3,7 @@ import { buildWapClientDiagnostics, listWapFriends, listWapGroups, lookupWapTarg
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  details?: unknown;
+  details: unknown;
 };
 
 type LookupParams = {

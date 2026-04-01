@@ -1,4 +1,5 @@
 import type { ChannelPlugin, OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { buildChannelSendResult, createEmptyChannelResult } from "openclaw/plugin-sdk/channel-send-result";
 import {
   CHANNEL_ID,
   DEFAULT_ACCOUNT_ID,
@@ -17,7 +18,7 @@ import {
   type WapAccount,
   wapChannelConfigSchema,
 } from "./config.js";
-import { getClientCount, getClientStats, getWapRuntime } from "./ws-server.js";
+import { getClientCount, getClientStats } from "./ws-server.js";
 import {
   buildWapClientDiagnostics,
   listWapFriends,
@@ -31,7 +32,7 @@ import { resolveReplyMediaUrls } from "./reply-media.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
-  details?: unknown;
+  details: unknown;
 };
 
 function jsonResult(details: unknown): ToolResult {
@@ -63,7 +64,7 @@ function buildPairingApproveHint(): string {
 
 function describeWapMessageTool() {
   return {
-    actions: ["search", "send"],
+    actions: ["search", "send"] as const,
   };
 }
 
@@ -418,8 +419,6 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
     supportsAction: ({ action }) => action === "search" || action === "send",
     extractToolSend: ({ args }) => extractActionSendTarget(args),
     handleAction: async ({ action, params, accountId }) => {
-      const runtime = getWapRuntime();
-      runtime?.logger.debug(`WAP action called action=${action} account=${accountId ?? DEFAULT_ACCOUNT_ID}`);
       if (action === "search") {
         return await handleWapSearchAction({
           params,
@@ -448,7 +447,7 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
       const payloadText = typeof payload?.text === "string" ? payload.text : "";
       const mediaList = resolveReplyMediaUrls(payload);
       if (!payloadText && mediaList.length === 0) {
-        return { ok: true, channel: CHANNEL_ID };
+        return createEmptyChannelResult(CHANNEL_ID);
       }
       let lastResult: { ok: true; details: unknown } | { ok: false; error: string; code?: string } = {
         ok: true,
@@ -478,8 +477,11 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
         }
       }
       return lastResult.ok
-        ? { ok: true, channel: CHANNEL_ID, details: lastResult.details }
-        : { ok: false, channel: CHANNEL_ID, error: lastResult.error, code: lastResult.code };
+        ? {
+            ...buildChannelSendResult(CHANNEL_ID, { ok: true }),
+            meta: { details: lastResult.details },
+          }
+        : buildChannelSendResult(CHANNEL_ID, { ok: false, error: lastResult.error });
     },
     sendText: async ({ to, text, accountId, replyToId }) => {
       const result = await executeCanonicalWapSend({
@@ -489,15 +491,16 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
         replyToMessageId: resolveReplyToMessageId(replyToId),
       });
       return result.ok
-        ? { ok: true, channel: CHANNEL_ID, details: result.details }
-        : { ok: false, channel: CHANNEL_ID, error: result.error, code: result.code };
+        ? {
+            ...buildChannelSendResult(CHANNEL_ID, { ok: true }),
+            meta: { details: result.details },
+          }
+        : buildChannelSendResult(CHANNEL_ID, { ok: false, error: result.error });
     },
     sendMedia: async ({ to, text, mediaUrl, accountId }) => {
       if (!mediaUrl) {
         return {
-          ok: false,
-          channel: CHANNEL_ID,
-          error: "mediaUrl is required",
+          ...buildChannelSendResult(CHANNEL_ID, { ok: false, error: "mediaUrl is required" }),
         };
       }
       const result = await executeCanonicalWapSend({
@@ -507,8 +510,11 @@ export const wapPlugin: ChannelPlugin<WapAccount> = {
         accountId,
       });
       return result.ok
-        ? { ok: true, channel: CHANNEL_ID, details: result.details }
-        : { ok: false, channel: CHANNEL_ID, error: result.error, code: result.code };
+        ? {
+            ...buildChannelSendResult(CHANNEL_ID, { ok: true }),
+            meta: { details: result.details },
+          }
+        : buildChannelSendResult(CHANNEL_ID, { ok: false, error: result.error });
     },
   },
   status: {

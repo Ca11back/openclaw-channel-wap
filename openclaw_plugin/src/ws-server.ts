@@ -3,7 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/core";
+import type { OpenClawPluginApi, PluginLogger } from "openclaw/plugin-sdk/core";
 import { resolveSenderCommandAuthorization } from "./command-auth.js";
 import {
   buildWapClientGroupConfigs,
@@ -50,7 +50,6 @@ import { resolveReplyMediaUrls } from "./reply-media.js";
 
 let wss: WebSocketServer | null = null;
 let httpServer: ReturnType<typeof createServer> | null = null;
-let runtime: OpenClawPluginApi | null = null;
 
 interface ClientInfo {
   ws: WebSocket;
@@ -349,14 +348,6 @@ function clearPendingHistory(accountId: string, talker: string) {
   pendingGroupHistories.delete(key);
 }
 
-export function setWapRuntime(api: OpenClawPluginApi) {
-  runtime = api;
-}
-
-export function getWapRuntime(): OpenClawPluginApi | null {
-  return runtime;
-}
-
 export function startWsService(api: OpenClawPluginApi) {
   if (wss || httpServer) {
     api.logger.warn("WAP WebSocket server is already running");
@@ -397,7 +388,7 @@ export function startWsService(api: OpenClawPluginApi) {
   });
 }
 
-export function stopWsService() {
+export function stopWsService(logger?: PluginLogger) {
   if (httpServer) {
     httpServer.close();
     httpServer = null;
@@ -418,7 +409,7 @@ export function stopWsService() {
   }
   clients.clear();
   tempFiles.clear();
-  runtime?.logger.info("WAP WebSocket/HTTP server stopped");
+  logger?.info("WAP WebSocket/HTTP server stopped");
 }
 
 function resolveAccountId(req: IncomingMessage): string {
@@ -557,12 +548,14 @@ function handleCapabilities(clientId: string, msg: WapCapabilitiesPayload, api: 
   }
   client.capabilities = normalizeCapabilities(msg.data);
   client.lastCapabilityAt = Date.now();
-  api.logger.info(`WAP capabilities updated for ${clientId}`, {
-    protocolVersion: client.capabilities.protocol_version,
-    rpcMethods: client.capabilities.rpc_methods,
-    commandTypes: client.capabilities.command_types,
-    features: client.capabilities.features,
-  });
+  api.logger.info(
+    `WAP capabilities updated for ${clientId}: ${JSON.stringify({
+      protocolVersion: client.capabilities.protocol_version,
+      rpcMethods: client.capabilities.rpc_methods,
+      commandTypes: client.capabilities.command_types,
+      features: client.capabilities.features,
+    })}`,
+  );
 }
 
 function handleRpcResult(clientId: string, msg: WapRpcResultPayload, api: OpenClawPluginApi) {
@@ -574,7 +567,7 @@ function handleRpcResult(clientId: string, msg: WapRpcResultPayload, api: OpenCl
   }
   const pending = pendingRpcRequests.get(requestId);
   if (!pending) {
-    api.logger.debug(`WAP rpc_result for unknown request ${requestId} from ${clientId}`);
+    api.logger.debug?.(`WAP rpc_result for unknown request ${requestId} from ${clientId}`);
     return;
   }
   if (pending.clientId !== clientId) {
@@ -608,7 +601,7 @@ function handleCommandResult(clientId: string, msg: WapCommandResultPayload, api
   }
   const pending = pendingCommandRequests.get(requestId);
   if (!pending) {
-    api.logger.debug(`WAP command_result for unknown request ${requestId} from ${clientId}`);
+    api.logger.debug?.(`WAP command_result for unknown request ${requestId} from ${clientId}`);
     return;
   }
   if (pending.clientId !== clientId) {
@@ -710,6 +703,7 @@ export async function buildWapMediaCommand(params: {
   caption?: string;
   kind?: "auto" | "image" | "file";
   fileNameOverride?: string;
+  logger?: Pick<PluginLogger, "warn">;
 }): Promise<WapDownstreamCommand | null> {
   const source = params.source.trim();
   if (!source) {
@@ -741,17 +735,17 @@ export async function buildWapMediaCommand(params: {
 
   const localPath = resolveLocalSourcePath(source);
   if (!localPath) {
-    runtime?.logger.warn(`WAP file source rejected: ${source}`);
+    params.logger?.warn(`WAP file source rejected: ${source}`);
     return null;
   }
   try {
     const stat = await fs.stat(localPath);
     if (!stat.isFile()) {
-      runtime?.logger.warn(`WAP file source is not a regular file: ${localPath}`);
+      params.logger?.warn(`WAP file source is not a regular file: ${localPath}`);
       return null;
     }
   } catch (error) {
-    runtime?.logger.warn(`WAP local file stat failed for ${localPath}: ${String(error)}`);
+    params.logger?.warn(`WAP local file stat failed for ${localPath}: ${String(error)}`);
     return null;
   }
 
@@ -867,7 +861,7 @@ async function processWapInboundMessage(params: {
   }
 
   const isGroup = msgData.is_group;
-  const kind: "dm" | "group" = isGroup ? "group" : "dm";
+  const kind: "direct" | "group" = isGroup ? "group" : "direct";
   const chatType = isGroup ? "group" : "direct";
   const normalizedTalker =
     typeof msgData.talker === "string" ? normalizeWapMessagingTarget(msgData.talker) : "";
@@ -933,22 +927,22 @@ async function processWapInboundMessage(params: {
 
   if (isGroup) {
     if (!isGroupChatAllowed(msgData.talker, groupAdmissionPolicy, groupAllowChats)) {
-      api.logger.debug(
+      api.logger.debug?.(
         `WAP drop group message from ${msgData.sender}: group ${msgData.talker} blocked by policy=${groupAdmissionPolicy}`,
       );
       return;
     }
     if (groupEnabled === false) {
-      api.logger.debug(`WAP drop group message from ${msgData.sender}: group ${msgData.talker} disabled by groups config`);
+      api.logger.debug?.(`WAP drop group message from ${msgData.sender}: group ${msgData.talker} disabled by groups config`);
       return;
     }
     const senderPolicy = groupSenderContext?.senderPolicy ?? "open";
     if (senderPolicy === "disabled") {
-      api.logger.debug(`WAP drop group message from ${msgData.sender}: sender policy disabled for ${msgData.talker}`);
+      api.logger.debug?.(`WAP drop group message from ${msgData.sender}: sender policy disabled for ${msgData.talker}`);
       return;
     }
     if (senderPolicy === "allowlist" && configuredAllowFrom.length > 0 && !senderAllowed) {
-      api.logger.debug(`WAP drop group message from ${msgData.sender}: sender not allowlisted`);
+      api.logger.debug?.(`WAP drop group message from ${msgData.sender}: sender not allowlisted`);
       return;
     }
     const requireMention = resolveWapGroupRequireMention({
@@ -969,17 +963,17 @@ async function processWapInboundMessage(params: {
           },
           noMentionContextHistoryLimit,
         );
-        api.logger.debug(
+        api.logger.debug?.(
           `WAP store no-mention context for ${routePeerId} from ${msgData.sender}`,
         );
       } else {
-        api.logger.debug(`WAP drop group message from ${msgData.sender}: mention required`);
+        api.logger.debug?.(`WAP drop group message from ${msgData.sender}: mention required`);
       }
       return;
     }
   } else {
     if (dmPolicy === "disabled") {
-      api.logger.debug(`WAP drop DM from ${msgData.sender}: dmPolicy=disabled`);
+      api.logger.debug?.(`WAP drop DM from ${msgData.sender}: dmPolicy=disabled`);
       return;
     }
     if (dmPolicy !== "open" && !senderAllowed) {
@@ -1038,7 +1032,7 @@ async function processWapInboundMessage(params: {
     commandAuth.commandAuthorized === false &&
     core.channel.text.hasControlCommand(bodyText, cfg)
   ) {
-    api.logger.debug(`WAP blocked unauthorized control command from ${msgData.sender}`);
+    api.logger.debug?.(`WAP blocked unauthorized control command from ${msgData.sender}`);
     return;
   }
 
@@ -1172,6 +1166,7 @@ async function processWapInboundMessage(params: {
               talker: msgData.talker,
               accountId: client.accountId,
               caption: replyText || undefined,
+              logger: api.logger,
             });
             if (!command) {
               continue;

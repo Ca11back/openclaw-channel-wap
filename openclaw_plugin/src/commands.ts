@@ -2,6 +2,9 @@ import type { OpenClawPluginApi, OpenClawConfig } from "openclaw/plugin-sdk/core
 import { CHANNEL_ID, resolveWapAccount } from "./config.js";
 import { buildWapClientDiagnostics } from "./operations.js";
 
+const WAP_DIAGNOSE_COMMAND = "wap-diagnose";
+const WAP_DIAGNOSE_DESCRIPTION = "Inspect WAP plugin readiness and connected client capabilities";
+
 function buildWapDoctorText(config: OpenClawConfig, accountId?: string | null): string {
   const resolvedAccount = resolveWapAccount(config, accountId);
   const diagnostics = buildWapClientDiagnostics(resolvedAccount.accountId);
@@ -23,7 +26,7 @@ function buildWapDoctorText(config: OpenClawConfig, accountId?: string | null): 
 export function registerWapCommands(api: OpenClawPluginApi) {
   api.registerCommand({
     name: "wap_doctor",
-    description: "Inspect WAP plugin readiness and connected client capabilities",
+    description: WAP_DIAGNOSE_DESCRIPTION,
     acceptsArgs: false,
     requireAuth: true,
     async handler(ctx: { config: OpenClawConfig; accountId?: string | null }) {
@@ -55,26 +58,28 @@ export function registerWapCommands(api: OpenClawPluginApi) {
       };
     },
   });
+}
 
+export function registerWapCli(api: OpenClawPluginApi) {
   api.registerCli(
-    (ctx: {
-      program: {
-        command: (name: string) => {
-          description: (text: string) => {
-            action: (handler: () => void) => void;
-          };
-        };
-      };
-      config: OpenClawConfig;
-    }) => {
+    (ctx) => {
       ctx.program
-        .command("wap-diagnose")
-        .description("Inspect WAP plugin readiness and connected client capabilities")
+        .command(WAP_DIAGNOSE_COMMAND)
+        .description(WAP_DIAGNOSE_DESCRIPTION)
         .action(() => {
           // eslint-disable-next-line no-console -- CLI command writes directly to the terminal.
           console.log(buildWapDoctorText(ctx.config));
         });
     },
-    { commands: ["wap-diagnose"] },
+    {
+      commands: [WAP_DIAGNOSE_COMMAND],
+      descriptors: [
+        {
+          name: WAP_DIAGNOSE_COMMAND,
+          description: WAP_DIAGNOSE_DESCRIPTION,
+          hasSubcommands: false,
+        },
+      ],
+    },
   );
 }

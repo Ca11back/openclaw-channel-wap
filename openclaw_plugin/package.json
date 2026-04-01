@@ -20,7 +20,10 @@
         "url": "https://github.com/Ca11back/openclaw-channel-wap/issues"
     },
     "files": [
+        "api.ts",
         "index.ts",
+        "runtime-api.ts",
+        "setup-entry.ts",
         "src/",
         "README.md",
         "LICENSE",
@@ -29,7 +32,13 @@
     "openclaw": {
         "extensions": [
             "./index.ts"
-        ]
+        ],
+        "setupEntry": "./setup-entry.ts",
+        "channel": {
+            "id": "openclaw-channel-wap",
+            "label": "WeChat (WAP)",
+            "blurb": "WeChat channel via WAuxiliary Android plugin."
+        }
     },
     "scripts": {},
     "dependencies": {
@@ -37,11 +46,12 @@
     },
     "devDependencies": {
         "@types/ws": "^8.18.1",
+        "openclaw": "2026.3.31",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3"
     },
     "peerDependencies": {
-        "openclaw": ">=2026.3.11"
+        "openclaw": ">=2026.3.31"
     },
     "peerDependenciesMeta": {
         "openclaw": {
