@@ -46,12 +46,12 @@
     },
     "devDependencies": {
         "@types/ws": "^8.18.1",
-        "openclaw": "2026.3.31",
+        "openclaw": "2026.4.5",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3"
     },
     "peerDependencies": {
-        "openclaw": ">=2026.3.31"
+        "openclaw": ">=2026.4.5"
     },
     "peerDependenciesMeta": {
         "openclaw": {

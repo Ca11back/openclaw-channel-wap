@@ -1,12 +1,20 @@
-import { defineChannelPluginEntry, emptyPluginConfigSchema } from "openclaw/plugin-sdk/core";
+import { defineChannelPluginEntry } from "openclaw/plugin-sdk/channel-core";
+import type { OpenClawPluginApi, PluginRuntime } from "openclaw/plugin-sdk/channel-core";
 import { registerWapCli, registerWapCommands, registerWapTools, startWsService, stopWsService, wapPlugin } from "./api.js";
 import { setWapRuntime } from "./runtime-api.js";
 
-export default defineChannelPluginEntry({
+const entry: {
+  id: string;
+  name: string;
+  description: string;
+  configSchema: NonNullable<typeof wapPlugin.configSchema>;
+  register: (api: OpenClawPluginApi) => void;
+  channelPlugin: typeof wapPlugin;
+  setChannelRuntime?: (runtime: PluginRuntime) => void;
+} = defineChannelPluginEntry({
   id: "openclaw-channel-wap",
   name: "WeChat (WAP)",
   description: "WeChat channel via WAuxiliary plugin",
-  configSchema: emptyPluginConfigSchema,
   plugin: wapPlugin,
   setRuntime: setWapRuntime,
   registerCliMetadata(api) {
@@ -22,3 +30,5 @@ export default defineChannelPluginEntry({
     });
   },
 });
+
+export default entry;

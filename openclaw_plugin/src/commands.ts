@@ -1,4 +1,4 @@
-import type { OpenClawPluginApi, OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { OpenClawPluginApi, OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import { CHANNEL_ID, resolveWapAccount } from "./config.js";
 import { buildWapClientDiagnostics } from "./operations.js";
 

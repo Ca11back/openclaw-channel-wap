@@ -1,4 +1,4 @@
-import type { ChannelPlugin, OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { ChannelPlugin, OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 import { buildChannelSendResult, createEmptyChannelResult } from "openclaw/plugin-sdk/channel-send-result";
 import {
   CHANNEL_ID,

@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/channel-core";
 
 export type ResolveSenderCommandAuthorizationParams = {
   cfg: OpenClawConfig;
